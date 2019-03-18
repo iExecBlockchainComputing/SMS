@@ -183,26 +183,21 @@ class BlockchainInterface(object):
 	def validateAndGetKeys(self, auth):
 		# Get task details
 		taskid = auth['taskid']
-		# task = self.IexecHub.functions.viewTask(taskid).call()
-		# print(task)
-		task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
+		task = self.IexecHub.functions.viewTask(taskid).call()
 
 		# CHECK 1: Task must be Active
 		assert(task[0] == 1)
 
 		# Get deal details
 		dealid = task[1]
-		# deal = self.IexecClerk.functions.viewDeal(dealid).call()
-		# print(deal)
-		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
-		     + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
+		deal = self.IexecClerk.functions.viewDeal(dealid).call()
 
-		app         = deal[0]
-		dataset     = deal[3]
-		scheduler   = deal[7]
-		tag         = deal[10]
-		beneficiary = deal[12]
-		params      = deal[14]
+		app         = deal[0][0]
+		dataset     = deal[1][0]
+		scheduler   = deal[2][1]
+		tag         = deal[5]
+		beneficiary = deal[7]
+		params      = deal[9]
 
 		# CHECK 2: Authorisation to contribute must be authentic
 		# web3 v4.8.2 → soliditySha3

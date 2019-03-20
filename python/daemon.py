@@ -39,10 +39,9 @@ class Secret(db.Model):
 class KeyPair(db.Model):
 	address = db.Column(db.String(42), primary_key=True)
 	private = db.Column(db.String(66), unique=True,  nullable=False)
-	app     = db.Column(db.String(42), unique=False, nullable=False)
+	dealid  = db.Column(db.String(66), unique=False, nullable=False)
 
 	def jsonify(self):
-		# return { 'address': self.address, 'private': self.private }
 		return self.private
 
 # +---------------------------------------------------------------------------+
@@ -94,8 +93,8 @@ class GenerateAPI(Resource):
 	def __init__(self):
 		super(GenerateAPI, self).__init__()
 
-	def get(self, address):
-		Ke = KeyPair.query.filter_by(app=address).first()
+	def get(self, dealid):
+		Ke = KeyPair.query.filter_by(dealid=dealid).first()
 		if Ke is not None:
 			return jsonify({ 'address': Ke.address })
 
@@ -103,7 +102,7 @@ class GenerateAPI(Resource):
 		db.session.merge(KeyPair(                                             \
 			address=account.address,                                          \
 			private=blockchaininterface.w3.toHex(account.privateKey),         \
-			app=address                                                       \
+			dealid=dealid                                                     \
 		))
 		db.session.commit()
 		return jsonify({ 'address': account.address })
@@ -114,9 +113,11 @@ class VerifyAPI(Resource):
 		super(VerifyAPI, self).__init__()
 
 	def get(self, address):
-		entry = KeyPair.query.filter_by(address=address).first()
+	# KeyPair.query.filter_by(address=address, dealid=dealid).first() # Ke
+		dealid = "0x23e9a6c8621582399a2626b67c2c11d3058c26eeabf97911fdf507a25beede6a"
+		entry = KeyPair.query.filter_by(address=address, dealid=dealid).first()
 		if entry:
-			return jsonify({ 'address': address, 'app': entry.app })
+			return jsonify({ 'address': address, 'dealid': entry.dealid })
 		else:
 			return jsonify({})
 
@@ -189,7 +190,7 @@ class BlockchainInterface(object):
 		assert(task[0] == 1)
 
 		# Get deal details
-		dealid = task[1]
+		dealid = "0x{}".format(task[1].hex())
 		deal = self.IexecClerk.functions.viewDeal(dealid).call()
 
 		app         = deal[0][0]
@@ -222,9 +223,9 @@ class BlockchainInterface(object):
 			raise NotImplementedError('MREnclave verification not implemented')
 
 		secrets = {}
-		secrets[dataset]         = Secret.query.filter_by (address=dataset                 ).first() # Kd
-		secrets[beneficiary]     = Secret.query.filter_by (address=beneficiary             ).first() # Kb
-		secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], app=app).first() # Ke
+		secrets[dataset]         = Secret.query.filter_by (address=dataset                       ).first() # Kd
+		secrets[beneficiary]     = Secret.query.filter_by (address=beneficiary                   ).first() # Kb
+		secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
 
 		return {
 			'secrets': { key: value.jsonify() if value else None for key, value in secrets.items() },
@@ -251,10 +252,10 @@ if __name__ == '__main__':
 	app.config['SQLALCHEMY_DATABASE_URI'] = params.database
 
 	# SETUP ENDPOINTS
-	api.add_resource(SecretAPI,   '/secret/<string:address>',               endpoint='secret'  ) # address: account or ressource SC
-	api.add_resource(GenerateAPI, '/attestation/generate/<string:address>', endpoint='generate') # address: appid
-	api.add_resource(VerifyAPI,   '/attestation/verify/<string:address>',   endpoint='verify'  ) # address: enclaveChallenge
-	api.add_resource(SecureAPI,   '/secure',                                endpoint='secure'  )
+	api.add_resource(SecretAPI,   '/secret/<string:address>',              endpoint='secret'  ) # address: account or ressource SC
+	api.add_resource(GenerateAPI, '/attestation/generate/<string:dealid>', endpoint='generate') # dealid
+	api.add_resource(VerifyAPI,   '/attestation/verify/<string:address>',  endpoint='verify'  ) # address: enclaveChallenge
+	api.add_resource(SecureAPI,   '/secure',                               endpoint='secure'  )
 
 	# RUN DAEMON
 	db.create_all()

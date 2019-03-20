@@ -1,3 +1,3 @@
 #!/usr/bin/bash
 
-curl -H "Content-Type: application/json" -X GET -d '' http://localhost:5000/attestation/verify/0x715a60A32d99677020AB3c14987F947Ae5962A4C
+curl -H "Content-Type: application/json" -X GET -d '' http://localhost:5000/attestation/verify/0x0d656FB0DDCD7b4D9179e00136f545F502D3f869

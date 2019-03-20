@@ -2,13 +2,22 @@ Dependecies
 ===========
 
 web3:
-`pip3 install web3==5.0.0a8`
+
+```
+pip3 install web3==5.0.0a8
+```
 
 eth_account:
-`pip3 install eth-account`
+
+```
+pip3 install eth-account
+```
 
 flask:
-`pip3 install Flask Flask-RESTful Flask-SQLAlchemy`
+
+```
+pip3 install Flask Flask-RESTful Flask-SQLAlchemy
+```
 
 Python SMS prototype API
 ========================

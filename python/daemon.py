@@ -4,6 +4,7 @@ import argparse
 import json
 import hashlib
 
+import web3
 from web3                 import Web3, HTTPProvider
 from web3.contract        import Contract
 from eth_account.messages import defunct_hash_message
@@ -31,8 +32,7 @@ class Secret(db.Model):
 	address = db.Column(db.String(42),    primary_key=True)
 	secret  = db.Column(db.UnicodeText(), unique=False, nullable=True) # MAXSIZE
 
-	def jsonify(self):
-		# return { 'address': self.address, 'secret': self.secret }
+	def __repr__(self):
 		return self.secret
 
 ### DB STORE: ethereum keypair for enclave attestation
@@ -41,8 +41,18 @@ class KeyPair(db.Model):
 	private = db.Column(db.String(66), unique=True,  nullable=False)
 	dealid  = db.Column(db.String(66), unique=False, nullable=False)
 
-	def jsonify(self):
+	def __repr__(self):
 		return self.private
+
+# +---------------------------------------------------------------------------+
+# |                               APP ENDPOINTS                               |
+# +---------------------------------------------------------------------------+
+
+class RevertError(Exception):
+	pass
+
+def jsonifySuccess(data): return jsonify({ 'ok': True,  'errorMessage': "",  'data': data })
+def jsonifyFailure(msg):  return jsonify({ 'ok': False, 'errorMessage': msg, 'data': {}   })
 
 # +---------------------------------------------------------------------------+
 # |                               APP ENDPOINTS                               |
@@ -67,26 +77,26 @@ class SecretAPI(Resource):
 	def get(self, address):
 		entry = Secret.query.filter_by(address=address).first()
 		if entry:
-			return jsonify({                                                  \
-				'address': address,                                           \
-				'hash':    hashlib.sha256(entry.secret.encode()).hexdigest()  \
+			return jsonifySuccess({
+				'address': address,
+				'hash':    hashlib.sha256(entry.secret.encode()).hexdigest()
 			})
 		else:
-			return jsonify({})
+			return jsonifyFailure("No secret found")
 
 	def post(self, address):
 		args = self.reqparse.parse_args()
 		if len(args.secret) > MAXSIZE:
-			return jsonify({ 'error': 'secret is to large.' }) # TODO: add error code?
+			return jsonifyFailure('secret is to large.')
 		elif blockchaininterface.checkIdentity(address, defunct_hash_message(text=args.secret), args.sign):
 			db.session.merge(Secret(address=address, secret=args.secret))
 			db.session.commit()
-			return jsonify({                                                  \
-				'address': address,                                           \
-				'hash':    hashlib.sha256(args.secret.encode()).hexdigest(),  \
+			return jsonifySuccess({
+				'address': address,
+				'hash':    hashlib.sha256(args.secret.encode()).hexdigest(),
 			})
 		else:
-			return jsonify({ 'error': 'invalid signature' }) # TODO: add error code?
+			return jsonifyFailure("invalid signature")
 
 ### APP ENDPOINT: enclave attestation provisionning
 class GenerateAPI(Resource):
@@ -96,7 +106,7 @@ class GenerateAPI(Resource):
 	def get(self, dealid):
 		Ke = KeyPair.query.filter_by(dealid=dealid).first()
 		if Ke is not None:
-			return jsonify({ 'address': Ke.address })
+			return jsonifySuccess({ 'address': Ke.address, 'dealid': dealid })
 
 		account = blockchaininterface.w3.eth.account.create()
 		db.session.merge(KeyPair(                                             \
@@ -105,7 +115,7 @@ class GenerateAPI(Resource):
 			dealid=dealid                                                     \
 		))
 		db.session.commit()
-		return jsonify({ 'address': account.address })
+		return jsonifySuccess({ 'address': account.address, 'dealid': dealid })
 
 ### APP ENDPOINT: enclave attestation verification
 class VerifyAPI(Resource):
@@ -117,9 +127,9 @@ class VerifyAPI(Resource):
 		dealid = "0x23e9a6c8621582399a2626b67c2c11d3058c26eeabf97911fdf507a25beede6a"
 		entry = KeyPair.query.filter_by(address=address, dealid=dealid).first()
 		if entry:
-			return jsonify({ 'address': address, 'dealid': entry.dealid })
+			return jsonifySuccess({ 'address': address, 'dealid': entry.dealid })
 		else:
-			return jsonify({})
+			return jsonifyFailure({})
 
 ### APP ENDPOINT: secret retreival by enclave
 class SecureAPI(Resource):
@@ -129,9 +139,11 @@ class SecureAPI(Resource):
 
 	def get(self):
 		try:
-			return jsonify(blockchaininterface.validateAndGetKeys(request.json['auth']))
-		except AssertionError:
-			return jsonify({ 'error': 'access denied' })
+			return jsonifySuccess(blockchaininterface.validateAndGetKeys(request.json['auth']))
+		except RevertError as e:
+			return jsonifyFailure(str(e))
+		except web3.exceptions.BadFunctionCallOutput:
+			return jsonifyFailure("blockchain error (BadFunctionCallOutput)")
 
 # +---------------------------------------------------------------------------+
 # |                           BLOCKCHAIN INTERFACE                            |
@@ -187,7 +199,8 @@ class BlockchainInterface(object):
 		task = self.IexecHub.functions.viewTask(taskid).call()
 
 		# CHECK 1: Task must be Active
-		assert(task[0] == 1)
+		if not task[0] == 1:
+			raise RevertError("Task is not active")
 
 		# Get deal details
 		dealid = "0x{}".format(task[1].hex())
@@ -212,15 +225,19 @@ class BlockchainInterface(object):
 			auth['taskid'],                                                   \
 			auth['enclave']                                                   \
 		]))
-		assert(scheduler      == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']))
-		assert(auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']))
+
+		if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
+			raise RevertError("Invalid scheduler signature")
+
+		if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
+			raise RevertError("Invalid worker signature")
 
 		# CHECK 3: MREnclave verification (only if part of the deal)
 		if tag[31] & 0x01:
 			# Get enclave secret
 			ExpectedMREnclave = self.getContract(address=app, abiname='App').functions.m_appMREnclave().call()
 			# print(f'MREnclave: {MREnclave}')
-			raise NotImplementedError('MREnclave verification not implemented')
+			raise RevertError('MREnclave verification not implemented')
 
 		secrets = {}
 		secrets[dataset]         = Secret.query.filter_by (address=dataset                       ).first() # Kd
@@ -228,7 +245,7 @@ class BlockchainInterface(object):
 		secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
 
 		return {
-			'secrets': { key: value.jsonify() if value else None for key, value in secrets.items() },
+			'secrets': { key: str(value) if value else None for key, value in secrets.items() },
 			'params':  params,
 		}
 

@@ -3,6 +3,15 @@
 import argparse
 import json
 import hashlib
+import uuid
+
+import requests
+import subprocess
+import docker
+import re
+import os
+import random
+import string
 
 import web3
 from web3                 import Web3, HTTPProvider
@@ -11,14 +20,21 @@ from eth_account.messages import defunct_hash_message
 from flask                import Flask, jsonify, make_response, request
 from flask_restful        import Api, Resource, reqparse
 from flask_sqlalchemy     import SQLAlchemy
+from Crypto.PublicKey     import RSA
 
 MAXSIZE = 4096
+
+# TODO: put in config
+confTemplatePath            = "./palaemonConfTemplate.txt"
+casAddress                  = "127.0.0.1:2390"
+iexec_enclave_fspf_tag      = "b9b43b7425324d59114323bcb2224793"
+iexec_enclave_fspf_key      = "9e2d0cbd3ee6b8882e464880af2bd721d25b4ed279313632286df2067d38444b"
 
 # +---------------------------------------------------------------------------+
 # |                           ENVIRONMENT VARIABLES                           |
 # +---------------------------------------------------------------------------+
 app = Flask("SMS prototype - v1")
-app.config['SQLALCHEMY_DATABASE_URI'       ] = "sqlite:///:memory:" # overwritten by params.database
+app.config['SQLALCHEMY_DATABASE_URI'       ] = "sqlite:///:memory:" # overwritten by config.database
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 api = Api(app)
 db  = SQLAlchemy(app)
@@ -85,10 +101,15 @@ class SecretAPI(Resource):
 			return jsonifyFailure("No secret found")
 
 	def post(self, address):
+		print (request.is_json) # TODO: cleanup prints
+		print (request.get_json()) # TODO: cleanup prints
 		args = self.reqparse.parse_args()
 		if len(args.secret) > MAXSIZE:
 			return jsonifyFailure('secret is to large.')
 		elif blockchaininterface.checkIdentity(address, defunct_hash_message(text=args.secret), args.sign):
+			if config.test: # TODO: cleanup prints
+				print("New secret pushed:") # TODO: cleanup prints
+				print(args.secret) # TODO: cleanup prints
 			db.session.merge(Secret(address=address, secret=args.secret))
 			db.session.commit()
 			return jsonifySuccess({
@@ -104,6 +125,8 @@ class GenerateAPI(Resource):
 		super(GenerateAPI, self).__init__()
 
 	def get(self, dealid):
+		print("generate") # TODO: cleanup prints
+		print(dealid) # TODO: cleanup prints
 		Ke = KeyPair.query.filter_by(dealid=dealid).first()
 		if Ke is not None:
 			return jsonifySuccess({ 'address': Ke.address, 'dealid': dealid })
@@ -123,9 +146,7 @@ class VerifyAPI(Resource):
 		super(VerifyAPI, self).__init__()
 
 	def get(self, address):
-	# KeyPair.query.filter_by(address=address, dealid=dealid).first() # Ke
-		dealid = "0x23e9a6c8621582399a2626b67c2c11d3058c26eeabf97911fdf507a25beede6a"
-		entry = KeyPair.query.filter_by(address=address, dealid=dealid).first()
+		entry = KeyPair.query.filter_by(address=address).first()
 		if entry:
 			return jsonifySuccess({ 'address': address, 'dealid': entry.dealid })
 		else:
@@ -145,6 +166,19 @@ class SecureAPI(Resource):
 		except web3.exceptions.BadFunctionCallOutput:
 			return jsonifyFailure("blockchain error (BadFunctionCallOutput)")
 
+### APP ENDPOINT: Palaemon conf file generation
+class SessionAPI(Resource):
+	def __init__(self):
+		super(SessionAPI, self).__init__()
+
+	def post(self):
+		try:
+			print (request.get_json()) # TODO: cleanup prints
+			return jsonifySuccess(blockchaininterface.setPalaemonConf(request.json['auth']))
+		except RevertError as e:
+			return jsonifyFailure(str(e))
+
+
 # +---------------------------------------------------------------------------+
 # |                           BLOCKCHAIN INTERFACE                            |
 # +---------------------------------------------------------------------------+
@@ -161,6 +195,7 @@ class BlockchainInterface(object):
 		}
 		self.IexecClerk = self.getContract(address=config.clerk, abiname='IexecClerk')
 		self.IexecHub   = self.getContract(address=config.hub,   abiname='IexecHub'  )
+		self.test       = config.test
 
 	def getContract(self, address, abiname):
 		return self.w3.eth.contract(                                          \
@@ -168,7 +203,6 @@ class BlockchainInterface(object):
 			abi=self.ABIs[abiname],                                           \
 			ContractFactoryClass=Contract,                                    \
 		)
-
 
 	def verifySignature(self, identity, hash, signature):
 		try:
@@ -192,13 +226,19 @@ class BlockchainInterface(object):
 		except:
 			return False
 
-
-	def validateAndGetKeys(self, auth):
-		# Get task details
+def validateAndGetKeys(self, auth):
+	# Get task details
+	if self.test:
+		app          =   "0x63C8De22025a7A463acd6c89C50b27013eCa6472"
+		dataset      =   "0x4b40D43da477bBcf69f5fd26467384355a1686d6"
+		beneficiary  =   "0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB"
+		dealid      =    "0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560"
+		params      = "blob"
+	else:
 		taskid = auth['taskid']
+		task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
 		# task = self.IexecHub.functions.viewTask(taskid).call()
 		# print(task)
-		task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
 
 		# CHECK 1: Task must be Active
 		if not task[0] == 1:
@@ -206,10 +246,10 @@ class BlockchainInterface(object):
 
 		# Get deal details
 		dealid = "0x{}".format(task[1].hex())
+		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
+			 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
 		# deal = self.IexecClerk.functions.viewDeal(dealid).call()
 		# print(deal)
-		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
-		     + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
 
 		app         = deal[0]
 		dataset     = deal[3]
@@ -254,6 +294,174 @@ class BlockchainInterface(object):
 			'params':  params,
 		}
 
+	def setPalaemonConf(self, auth):
+		if self.test:
+			task = {
+				'dealid':      "0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560",
+				'app':         "0x63C8De22025a7A463acd6c89C50b27013eCa6472",
+				'dataset':     "0x4b40D43da477bBcf69f5fd26467384355a1686d6",
+				'beneficiary': "0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB",
+				'params':      "blob"
+			}
+			deal = ""
+
+		else:
+			taskid = auth['taskid']
+			task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
+			# task = self.IexecHub.functions.viewTask(taskid).call()
+			# print(task)
+
+			# CHECK 1: Task must be Active
+			if not task[0] == 1:
+				raise RevertError("Task is not active")
+
+			# Get deal details
+			dealid = task[1]
+			deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
+				 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
+			# deal = self.IexecClerk.functions.viewDeal(dealid).call()
+			# print(deal)
+
+			app         = deal[0]
+			dataset     = deal[3]
+			scheduler   = deal[7]
+			tag         = deal[10]
+			beneficiary = deal[12]
+			params      = deal[14]
+
+			# CHECK 2: Authorisation to contribute must be authentic
+			# web3 v4.8.2 → soliditySha3
+			# web3 v5.0.0 → solidityKeccak
+			hash = defunct_hash_message(self.w3.solidityKeccak([              \
+				'address',                                                    \
+				'bytes32',                                                    \
+				'address'                                                     \
+			], [                                                              \
+				auth['worker'],                                               \
+				auth['taskid'],                                               \
+				auth['enclave']                                               \
+			]))
+			if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
+				raise RevertError("Invalid scheduler signature")
+
+			if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
+				raise RevertError("Invalid worker signature")
+
+		confInfo = self.getConfInfo(task, deal)
+		print(confInfo)
+
+		conf = self.generatePalaemonConfFile(confInfo)
+
+		#Post session to Palaemon, over https. this is not secure, we need to attest Palaemon.
+		response = requests.post('https://' + casAddress + '/session', data=conf, verify=False)
+		# TODO: do somethign with it
+
+		return {
+			'session_id':      confInfo['session_id'],
+			'output_fspf':     confInfo['output_fspf'],
+			'beneficiary_key': confInfo['beneficiary_key']
+		}
+
+	def generatePalaemonConfFile(self, confInfo):
+		#insecure, better to hardcode it.
+		template = Template(open(confTemplatePath,"r").read())
+		return template.substitute(
+			MRENCLAVE              = confInfo['MREnclave'],
+			SESSION_ID             = confInfo['session_id'],
+			COMMAND                = confInfo['command'],
+			OUTPUT_FSPF_KEY        = confInfo['output_fspf_key'],
+			OUTPUT_FSPF_TAG        = confInfo['output_fspf_tag'],
+			DATA_FSPF_KEY          = confInfo['data_fspf_key'],
+			DATA_FSPF_TAG          = confInfo['data_fspf_tag'],
+			FSPF_KEY               = confInfo['fspf_key'],
+			FSPF_TAG               = confInfo['fspf_tag'],
+			IEXEC_ENCLAVE_FSPF_KEY = iexec_enclave_fspf_key,
+			IEXEC_ENCLAVE_FSPF_TAG = iexec_enclave_fspf_tag
+		)
+
+	def getConfInfo(self, task, deal):
+
+		if self.test:
+			app         = task['app']
+			dataset     = task['dataset']
+			beneficiary = task['beneficiary']
+			dealid      = task['dealid']
+			params      = task['params']
+		else:
+			app         = deal[0]
+			dataset     = deal[3]
+			beneficiary = deal[12]
+			params      = deal[14]
+
+		#now gathering different info for building Palaemon conf
+		confInfo = dict()
+
+		#info for dApp (MREnclave for different heap size, fspf_tag, fspf_key)
+		appInfo = self.getAppInfo(app)
+		print("AppInfo:", appInfo)
+		confInfo.update(appInfo)
+
+		#info for dataset (dataset_fspf_key, dataset_fspf_tag)
+		datasetInfo = self.getDatasetInfo(dataset)
+		print("Dataset info:", datasetInfo)
+		confInfo.update(datasetInfo)
+
+		#info for output volume encryption (used by scone runtime)
+		beneficiaryKey = Secret.query.filter_by(address=beneficiary).first().secret;
+		outputVolumeInfo = self.getOutputVolumeInfo(beneficiary, beneficiaryKey)
+		confInfo.update(outputVolumeInfo)
+
+		confInfo["enclaveChallengeKey"] = KeyPair.query.filter_by(dealid=dealid).first()
+		confInfo["session_id"]          = str(uuid.uuid4())
+		confInfo["command"]             = params
+
+		return confInfo
+
+	def getAppInfo(self, dAppAddress):
+		dAppFingerprint = self.getContract(address=dAppAddress, abiname='App').functions.m_appMREnclave().call()
+		if dAppFingerprint is None: raise RevertError("Couldn't find dAppFingerprint")
+		[fspf_key, fspf_tag, MREnclave] = dAppFingerprint.decode("utf-8").split("|")[:3]
+
+		return {
+			"fspf_key":  fspf_key,
+			"fspf_tag":  fspf_tag,
+			"MREnclave": MREnclave
+		}
+
+	def getDatasetInfo(self, dataset):
+		secret = Secret.query.filter_by (address=dataset).first()
+		if secret is None: raise RevertError("Couldn't find dataset info")
+		[data_fspf_key, data_fspf_tag] = secret.secret.split("|")[:2]
+
+		return {
+			'data_fspf_key': data_fspf_key,
+			'data_fspf_tag': data_fspf_tag,
+			'address':       dataset
+		}
+
+	#return dict containing output_fspf (as a string), output_fspf_tag, output_fspf_key, and  output_fspf_key encrypted with beneficiary key.
+	#not secure, we write everything on disk, need to do all this inside enclave.
+	def getOutputVolumeInfo(self, beneficiary, beneficiaryKey):
+		#shell script to launch docker scone-cli, to create fspf and encrypt it.
+		beneficiaryDirPath="./output_fspf/"+beneficiary
+		try:
+			os.stat(beneficiaryDirPath)
+		except:
+			os.mkdir(beneficiaryDirPath)
+
+		subprocess.call(['./create_output_fspf.sh', beneficiary])
+
+		with open("./output_fspf/" + beneficiary + "/fspf.pb", "rb") as file
+			fspf = file.read() #encrypted fspf (binary) should we encode in base64
+
+		with open("./output_fspf/" + beneficiary + "/keytag", "r") as file
+			key, tag = file.read().split("|")
+
+		return {
+			'fspf':            base64.b64encode(fspf),
+			'output_fspf_key': key,
+			'output_fspf_tag': tag,
+		}
 
 
 if __name__ == '__main__':
@@ -261,25 +469,27 @@ if __name__ == '__main__':
 	parser.add_argument('--host',      type=str, default='0.0.0.0',               help='REST api host - default: 0.0.0.0'             )
 	parser.add_argument('--port',      type=int, default=5000,                    help='REST api port - default: 5000'                )
 	parser.add_argument('--gateway',   type=str, default='http://localhost:8545', help='web3 gateway - default: http://localhost:8545')
-	parser.add_argument('--database',  type=str, default='sqlite:///:memory:',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
+	parser.add_argument('--database',  type=str, default='sqlite:////tmp/sms.db', help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
 	parser.add_argument('--contracts', type=str, default='contracts',             help='iExec SC folder - default: ./contracts'       )
 	parser.add_argument('--clerk',     type=str, required=True,                   help='iExecClerk address'                           )
 	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
-	params = parser.parse_args()
+	parser.add_argument('--test',      action="store_true")
+	config = parser.parse_args()
 
 	# CREATE BLOCKCHAIN INTERFACE
-	blockchaininterface = BlockchainInterface(config=params)
+	blockchaininterface = BlockchainInterface(config=config)
 
 	# DATABASE SETTINGS
-	app.config['SQLALCHEMY_DATABASE_URI'] = params.database
+	app.config['SQLALCHEMY_DATABASE_URI'] = config.database
 
 	# SETUP ENDPOINTS
 	api.add_resource(SecretAPI,   '/secret/<string:address>',              endpoint='secret'  ) # address: account or ressource SC
 	api.add_resource(GenerateAPI, '/attestation/generate/<string:dealid>', endpoint='generate') # dealid
 	api.add_resource(VerifyAPI,   '/attestation/verify/<string:address>',  endpoint='verify'  ) # address: enclaveChallenge
 	api.add_resource(SecureAPI,   '/secure',                               endpoint='secure'  )
+	api.add_resource(SessionAPI,  '/securesession/generate',               endpoint='sessiongenerate'  )
 
 	# RUN DAEMON
 	db.create_all()
-	app.run(host=params.host, port=params.port, debug=False)
+	app.run(host=config.host, port=config.port, debug=False)
 	# db.drop_all() # Don't drop

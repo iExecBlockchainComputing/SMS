@@ -356,11 +356,11 @@ def validateAndGetKeys(self, auth):
 		response = requests.post('https://' + casAddress + '/session', data=conf, verify=False)
 		# TODO: do somethign with it
 
-		return {
-			'session_id':      confInfo['session_id'],
-			'output_fspf':     confInfo['output_fspf'],
-			'beneficiary_key': confInfo['beneficiary_key']
-		}
+		return jsonifySuccess ({
+			'sessionId':      confInfo['session_id'],
+			'outputFspf':     confInfo['output_fspf'],
+			'beneficiaryKey': confInfo['beneficiary_key']
+		})
 
 	def generatePalaemonConfFile(self, confInfo):
 		#insecure, better to hardcode it.
@@ -451,10 +451,10 @@ def validateAndGetKeys(self, auth):
 
 		subprocess.call(['./create_output_fspf.sh', beneficiary])
 
-		with open("./output_fspf/" + beneficiary + "/fspf.pb", "rb") as file
+		with open("./output_fspf/" + beneficiary + "/fspf.pb", "rb") as file:
 			fspf = file.read() #encrypted fspf (binary) should we encode in base64
 
-		with open("./output_fspf/" + beneficiary + "/keytag", "r") as file
+		with open("./output_fspf/" + beneficiary + "/keytag", "r") as file:
 			key, tag = file.read().split("|")
 
 		return {

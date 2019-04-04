@@ -4,6 +4,7 @@ import argparse
 import json
 import hashlib
 import uuid
+import base64
 
 import requests
 import subprocess
@@ -21,12 +22,13 @@ from flask                import Flask, jsonify, make_response, request
 from flask_restful        import Api, Resource, reqparse
 from flask_sqlalchemy     import SQLAlchemy
 from Crypto.PublicKey     import RSA
+from string import Template
 
 MAXSIZE = 4096
 
 # TODO: put in config
 confTemplatePath            = "./palaemonConfTemplate.txt"
-casAddress                  = "127.0.0.1:2390"
+casAddress                  = "0.0.0.1:8081"
 iexec_enclave_fspf_tag      = "b9b43b7425324d59114323bcb2224793"
 iexec_enclave_fspf_key      = "9e2d0cbd3ee6b8882e464880af2bd721d25b4ed279313632286df2067d38444b"
 
@@ -226,73 +228,73 @@ class BlockchainInterface(object):
 		except:
 			return False
 
-def validateAndGetKeys(self, auth):
-	# Get task details
-	if self.test:
-		app          =   "0x63C8De22025a7A463acd6c89C50b27013eCa6472"
-		dataset      =   "0x4b40D43da477bBcf69f5fd26467384355a1686d6"
-		beneficiary  =   "0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB"
-		dealid      =    "0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560"
-		params      = "blob"
-	else:
-		taskid = auth['taskid']
-		task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
-		# task = self.IexecHub.functions.viewTask(taskid).call()
-		# print(task)
+	def validateAndGetKeys(self, auth):
+		# Get task details
+		if self.test:
+			app          =   "0x0807032981F7dae887771C7e9c3AC7Cc4f40681A"
+			dataset      =   "0x4b40D43da477bBcf69f5fd26467384355a1686d6"
+			beneficiary  =   "0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB"
+			dealid      =    "0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560"
+			params      = "blob"
+		else:
+			taskid = auth['taskid']
+			task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
+			# task = self.IexecHub.functions.viewTask(taskid).call()
+			# print(task)
 
-		# CHECK 1: Task must be Active
-		if not task[0] == 1:
-			raise RevertError("Task is not active")
+			# CHECK 1: Task must be Active
+			if not task[0] == 1:
+				raise RevertError("Task is not active")
 
-		# Get deal details
-		dealid = "0x{}".format(task[1].hex())
-		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
-			 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
-		# deal = self.IexecClerk.functions.viewDeal(dealid).call()
-		# print(deal)
+			# Get deal details
+			dealid = "0x{}".format(task[1].hex())
+			deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
+				 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
+			# deal = self.IexecClerk.functions.viewDeal(dealid).call()
+			# print(deal)
 
-		app         = deal[0]
-		dataset     = deal[3]
-		scheduler   = deal[7]
-		tag         = deal[10]
-		beneficiary = deal[12]
-		params      = deal[14]
+			app         = deal[0]
+			dataset     = deal[3]
+			scheduler   = deal[7]
+			tag         = deal[10]
+			beneficiary = deal[12]
+			params      = deal[14]
 
-		# CHECK 2: Authorisation to contribute must be authentic
-		# web3 v4.8.2 → soliditySha3
-		# web3 v5.0.0 → solidityKeccak
-		hash = defunct_hash_message(self.w3.solidityKeccak([                  \
-			'address',                                                        \
-			'bytes32',                                                        \
-			'address'                                                         \
-		], [                                                                  \
-			auth['worker'],                                                   \
-			auth['taskid'],                                                   \
-			auth['enclave']                                                   \
-		]))
+			# CHECK 2: Authorisation to contribute must be authentic
+			# web3 v4.8.2 → soliditySha3
+			# web3 v5.0.0 → solidityKeccak
+			hash = defunct_hash_message(self.w3.solidityKeccak([                  \
+				'address',                                                        \
+				'bytes32',                                                        \
+				'address'                                                         \
+			], [                                                                  \
+				auth['worker'],                                                   \
+				auth['taskid'],                                                   \
+				auth['enclave']                                                   \
+			]))
 
-		if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
-			raise RevertError("Invalid scheduler signature")
+			if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
+				raise RevertError("Invalid scheduler signature")
 
-		if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
-			raise RevertError("Invalid worker signature")
+			if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
+				raise RevertError("Invalid worker signature")
 
-		# CHECK 3: MREnclave verification (only if part of the deal)
-		if tag[31] & 0x01:
-			# Get enclave secret
-			ExpectedMREnclave = self.getContract(address=app, abiname='App').functions.m_appMREnclave().call()
-			# print(f'MREnclave: {MREnclave}')
-			raise RevertError('MREnclave verification not implemented')
+			# CHECK 3: MREnclave verification (only if part of the deal)
+			if tag[31] & 0x01:
+				# Get enclave secret
+				ExpectedMREnclave = self.getContract(address=app, abiname='App').functions.m_appMREnclave().call()
+				# print(f'MREnclave: {MREnclave}')
+				raise RevertError('MREnclave verification not implemented')
 
-		secrets = {}
-		secrets[dataset]         = Secret.query.filter_by (address=dataset                       ).first() # Kd
-		secrets[beneficiary]     = Secret.query.filter_by (address=beneficiary                   ).first() # Kb
-		secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+			secrets = {}
+			secrets[dataset]         = Secret.query.filter_by (address=dataset                       ).first() # Kd
+			secrets[beneficiary]     = Secret.query.filter_by (address=beneficiary                   ).first() # Kb
+			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
 
-		return {
-			'secrets': { key: str(value) if value else None for key, value in secrets.items() },
-			'params':  params,
-		}
+			return {
+				'secrets': { key: str(value) if value else None for key, value in secrets.items() },
+				'params':  params,
+			}
 
 	def setPalaemonConf(self, auth):
 		if self.test:
@@ -451,7 +453,7 @@ def validateAndGetKeys(self, auth):
 
 		subprocess.call(['./create_output_fspf.sh', beneficiary])
 
-		with open("./output_fspf/" + beneficiary + "/fspf.pb", "rb") as file:
+		with open("./output_fspf/" + beneficiary + "/volume.fspf", "rb") as file:
 			fspf = file.read() #encrypted fspf (binary) should we encode in base64
 
 		with open("./output_fspf/" + beneficiary + "/keytag", "r") as file:

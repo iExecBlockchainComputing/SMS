@@ -355,7 +355,12 @@ class BlockchainInterface(object):
 		conf = self.generatePalaemonConfFile(confInfo)
 
 		#Post session to Palaemon, over https. this is not secure, we need to attest Palaemon.
-		response = requests.post('https://' + casAddress + '/session', data=conf, verify=False)
+		response = requests.post(
+				'https://' + casAddress + '/session',
+				data=conf,
+				cert=('./conf/client.crt', './conf/client-key.key'),
+				verify=False
+			)
 		# TODO: do somethign with it
 
 		return jsonifySuccess ({

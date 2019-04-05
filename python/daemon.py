@@ -245,9 +245,13 @@ class BlockchainInterface(object):
 			raise RevertError('MREnclave verification not implemented')
 
 		secrets = {}
-		secrets[dataset] = Secret.query.filter_by(address=dataset).first() # Kd
-		secrets[beneficiary] = Secret.query.filter_by(address=beneficiary).first() # Kb
-		if tag[31] & 0x01:
+		if dataset != "0x0000000000000000000000000000000000000000":
+			secrets[dataset] = Secret.query.filter_by(address=dataset).first() # Kd
+
+		if beneficiary != "0x0000000000000000000000000000000000000000":
+			secrets[beneficiary] = Secret.query.filter_by(address=beneficiary).first() # Kb
+
+		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
 			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
 
 		return {

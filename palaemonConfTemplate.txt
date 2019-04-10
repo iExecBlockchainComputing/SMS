@@ -2,28 +2,39 @@ name: $SESSION_ID
 digest: create
 
 services:
-   - name: dapp
-     image_name: dapp_image
+   - name: app
+     image_name: image
      mrenclaves: [$MRENCLAVE]
      tags: [demo]
      pwd: /
-     command: $COMMAND
+     command: python /app/test.py
      fspf_path: /fspf.pb
      fspf_key: $FSPF_KEY
      fspf_tag: $FSPF_TAG
-   - name: signing_enclave
-     image_name: dapp_image
+   - name: encryption
+     image_name: image
      mrenclaves: [$MRENCLAVE]
      tags: [demo]
      pwd: /
-     command: python signer.py
+     command: python /signer/signer.py encrypt
      fspf_path: /fspf.pb
      fspf_key: $FSPF_KEY
      fspf_tag: $FSPF_TAG
-     env:
-
+     environment:
+         enclave_key: $ENCLAVE_KEY
+         taskid: $TASK_ID
+         worker: $WORKER_ADDRESS
+   - name: decryption
+     image_name: image
+     mrenclaves: [$MRENCLAVE]
+     tags: [demo]
+     pwd: /
+     command: python /signer/signer.py decrypt
+     fspf_path: /fspf.pb
+     fspf_key: $FSPF_KEY
+     fspf_tag: $FSPF_TAG
 images:
-   - name: dapp_image
+   - name: image
      mrenclaves: [$MRENCLAVE]
      tags: [demo]
      volumes:
@@ -31,8 +42,6 @@ images:
           path: /data
         - name: output
           path: /output
-        - name: iexec_enclave
-          path: /iexec_enclave
 
 volumes:
    - name: data
@@ -41,6 +50,3 @@ volumes:
    - name: output
      fspf_tag: $OUTPUT_FSPF_TAG
      fspf_key: $OUTPUT_FSPF_KEY
-   - name: iexec_enclave
-     fspf_tag: $IEXEC_ENCLAVE_FSPF_TAG
-     fspf_key: $IEXEC_ENCLAVE_FSPF_KEY

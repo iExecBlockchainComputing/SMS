@@ -28,9 +28,9 @@ MAXSIZE = 4096
 
 # TODO: put in config
 confTemplatePath            = "./palaemonConfTemplate.txt"
-casAddress                  = "0.0.0.1:8081"
-iexec_enclave_fspf_tag      = "b9b43b7425324d59114323bcb2224793"
-iexec_enclave_fspf_key      = "9e2d0cbd3ee6b8882e464880af2bd721d25b4ed279313632286df2067d38444b"
+casAddress                  = "127.0.0.1:8081"
+iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
+iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
 
 # +---------------------------------------------------------------------------+
 # |                           ENVIRONMENT VARIABLES                           |
@@ -230,80 +230,76 @@ class BlockchainInterface(object):
 
 	def validateAndGetKeys(self, auth):
 		# Get task details
-		if self.test:
-			app          =   "0x0807032981F7dae887771C7e9c3AC7Cc4f40681A"
-			dataset      =   "0x4b40D43da477bBcf69f5fd26467384355a1686d6"
-			beneficiary  =   "0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB"
-			dealid      =    "0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560"
-			params      = "blob"
-		else:
-			taskid = auth['taskid']
-			task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
-			# task = self.IexecHub.functions.viewTask(taskid).call()
-			# print(task)
 
-			# CHECK 1: Task must be Active
-			if not task[0] == 1:
-				raise RevertError("Task is not active")
+		taskid = auth['taskid']
+		task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
+		# task = self.IexecHub.functions.viewTask(taskid).call()
+		# print(task)
 
-			# Get deal details
-			dealid = "0x{}".format(task[1].hex())
-			deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
-				 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
-			# deal = self.IexecClerk.functions.viewDeal(dealid).call()
-			# print(deal)
+		# CHECK 1: Task must be Active
+		if not task[0] == 1:
+			raise RevertError("Task is not active")
 
-			app         = deal[0]
-			dataset     = deal[3]
-			scheduler   = deal[7]
-			tag         = deal[10]
-			beneficiary = deal[12]
-			params      = deal[14]
+		# Get deal details
+		dealid = "0x{}".format(task[1].hex())
+		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
+			 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
+		# deal = self.IexecClerk.functions.viewDeal(dealid).call()
+		# print(deal)
 
-			# CHECK 2: Authorisation to contribute must be authentic
-			# web3 v4.8.2 → soliditySha3
-			# web3 v5.0.0 → solidityKeccak
-			hash = defunct_hash_message(self.w3.solidityKeccak([                  \
-				'address',                                                        \
-				'bytes32',                                                        \
-				'address'                                                         \
-			], [                                                                  \
-				auth['worker'],                                                   \
-				auth['taskid'],                                                   \
-				auth['enclave']                                                   \
-			]))
+		app         = deal[0]
+		dataset     = deal[3]
+		scheduler   = deal[7]
+		tag         = deal[10]
+		beneficiary = deal[12]
+		params      = deal[14]
 
-			if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
-				raise RevertError("Invalid scheduler signature")
+		# CHECK 2: Authorisation to contribute must be authentic
+		# web3 v4.8.2 → soliditySha3
+		# web3 v5.0.0 → solidityKeccak
+		hash = defunct_hash_message(self.w3.solidityKeccak([                  \
+			'address',                                                        \
+			'bytes32',                                                        \
+			'address'                                                         \
+		], [                                                                  \
+			auth['worker'],                                                   \
+			auth['taskid'],                                                   \
+			auth['enclave']                                                   \
+		]))
 
-			if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
-				raise RevertError("Invalid worker signature")
+		if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
+			raise RevertError("Invalid scheduler signature")
 
-			# CHECK 3: MREnclave verification (only if part of the deal)
-			if tag[31] & 0x01:
-				# Get enclave secret
-				ExpectedMREnclave = self.getContract(address=app, abiname='App').functions.m_appMREnclave().call()
-				# print(f'MREnclave: {MREnclave}')
-				raise RevertError('MREnclave verification not implemented')
+		if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
+			raise RevertError("Invalid worker signature")
 
-			secrets = {}
-			secrets[dataset]         = Secret.query.filter_by (address=dataset                       ).first() # Kd
-			secrets[beneficiary]     = Secret.query.filter_by (address=beneficiary                   ).first() # Kb
-			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+		# CHECK 3: MREnclave verification (only if part of the deal)
+		if tag[31] & 0x01:
+			# Get enclave secret
+			ExpectedMREnclave = self.getContract(address=app, abiname='App').functions.m_appMREnclave().call()
+			# print(f'MREnclave: {MREnclave}')
+			raise RevertError('MREnclave verification not implemented')
 
-			return {
-				'secrets': { key: str(value) if value else None for key, value in secrets.items() },
-				'params':  params,
-			}
+		secrets = {}
+		secrets[dataset]         = Secret.query.filter_by (address=dataset                       ).first() # Kd
+		secrets[beneficiary]     = Secret.query.filter_by (address=beneficiary                   ).first() # Kb
+		secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+
+		return {
+			'secrets': { key: str(value) if value else None for key, value in secrets.items() },
+			'params':  params,
+		}
 
 	def setPalaemonConf(self, auth):
 		if self.test:
 			task = {
-				'dealid':      "0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560",
-				'app':         "0x63C8De22025a7A463acd6c89C50b27013eCa6472",
-				'dataset':     "0x4b40D43da477bBcf69f5fd26467384355a1686d6",
-				'beneficiary': "0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB",
-				'params':      "blob"
+				'dealid':      		"0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560",
+				'app':         		"0x570280a48EA01a466ea5a88d0f1C16C124BCDc3E",
+				'dataset':     		"0xAAdC3C643b79dbf8b761bA62283fF105930B20eb",
+				'beneficiary': 		"0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB",
+				'params':      		"blob",
+				'id':				auth['taskid'],
+				'worker_address':	auth['worker']
 			}
 			deal = ""
 
@@ -350,7 +346,6 @@ class BlockchainInterface(object):
 				raise RevertError("Invalid worker signature")
 
 		confInfo = self.getConfInfo(task, deal)
-		print(confInfo)
 
 		conf = self.generatePalaemonConfFile(confInfo)
 
@@ -361,13 +356,13 @@ class BlockchainInterface(object):
 				cert=('./conf/client.crt', './conf/client-key.key'),
 				verify=False
 			)
-		# TODO: do somethign with it
-
-		return jsonifySuccess ({
+		print(conf)
+		print(response.content)
+		return {
 			'sessionId':      confInfo['session_id'],
 			'outputFspf':     confInfo['output_fspf'],
 			'beneficiaryKey': confInfo['beneficiary_key']
-		})
+		}
 
 	def generatePalaemonConfFile(self, confInfo):
 		#insecure, better to hardcode it.
@@ -383,7 +378,10 @@ class BlockchainInterface(object):
 			FSPF_KEY               = confInfo['fspf_key'],
 			FSPF_TAG               = confInfo['fspf_tag'],
 			IEXEC_ENCLAVE_FSPF_KEY = iexec_enclave_fspf_key,
-			IEXEC_ENCLAVE_FSPF_TAG = iexec_enclave_fspf_tag
+			IEXEC_ENCLAVE_FSPF_TAG = iexec_enclave_fspf_tag,
+			ENCLAVE_KEY			   = confInfo['enclave_challenge_key'],
+			TASK_ID				   = confInfo['task_id'],
+			WORKER_ADDRESS 		   = confInfo['worker_address']
 		)
 
 	def getConfInfo(self, task, deal):
@@ -418,9 +416,11 @@ class BlockchainInterface(object):
 		outputVolumeInfo = self.getOutputVolumeInfo(beneficiary, beneficiaryKey)
 		confInfo.update(outputVolumeInfo)
 
-		confInfo["enclaveChallengeKey"] = KeyPair.query.filter_by(dealid=dealid).first()
-		confInfo["session_id"]          = str(uuid.uuid4())
-		confInfo["command"]             = params
+		confInfo['enclave_challenge_key'] 	= KeyPair.query.filter_by(dealid=dealid).first()
+		confInfo['session_id']          	= str(uuid.uuid4())
+		confInfo['command']             	= params
+		confInfo['task_id']					= task['id']
+		confInfo['worker_address']			= task['worker_address']
 
 		return confInfo
 
@@ -465,9 +465,10 @@ class BlockchainInterface(object):
 			key, tag = file.read().split("|")
 
 		return {
-			'fspf':            base64.b64encode(fspf),
-			'output_fspf_key': key,
-			'output_fspf_tag': tag,
+			'output_fspf':            base64.b64encode(fspf),
+			'output_fspf_key':        key,
+			'output_fspf_tag':        tag,
+			'beneficiary_key':         beneficiaryKey
 		}
 
 

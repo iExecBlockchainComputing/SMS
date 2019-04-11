@@ -13,6 +13,7 @@ from flask_restful        import Api, Resource, reqparse
 from flask_sqlalchemy     import SQLAlchemy
 
 MAXSIZE = 4096
+SALT = "iexec_sms_secret:"
 
 # +---------------------------------------------------------------------------+
 # |                           ENVIRONMENT VARIABLES                           |
@@ -88,7 +89,7 @@ class SecretAPI(Resource):
 		args = self.reqparse.parse_args()
 		if len(args.secret) > MAXSIZE:
 			return jsonifyFailure('secret is to large.')
-		elif blockchaininterface.checkIdentity(address, defunct_hash_message(text=args.secret), args.sign):
+		elif blockchaininterface.checkIdentity(address, defunct_hash_message(text=SALT+args.secret), args.sign):
 			db.session.merge(Secret(address=address, secret=args.secret))
 			db.session.commit()
 			return jsonifySuccess({

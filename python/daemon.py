@@ -206,7 +206,8 @@ class BlockchainInterface(object):
 			raise RevertError("Task is not active")
 
 		# Get deal details
-		dealid = "0x{}".format(task[1].hex())
+		dealid = task[1]
+
 		# deal = self.IexecClerk.functions.viewDeal(dealid).call()
 		# print(deal)
 		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
@@ -222,7 +223,7 @@ class BlockchainInterface(object):
 		# CHECK 2: Authorisation to contribute must be authentic
 		# web3 v4.8.2 → soliditySha3
 		# web3 v5.0.0 → solidityKeccak
-		hash = defunct_hash_message(self.w3.solidityKeccak([                  \
+		hash = defunct_hash_message(self.w3.soliditySha3([                    \
 			'address',                                                        \
 			'bytes32',                                                        \
 			'address'                                                         \

@@ -25,6 +25,7 @@ from Crypto.PublicKey     import RSA
 from string import Template
 
 MAXSIZE = 4096
+SALT = "iexec_sms_secret:"
 
 # TODO: put in config
 confTemplatePath            = "./palaemonConfTemplate.txt"
@@ -108,8 +109,8 @@ class SecretAPI(Resource):
 		args = self.reqparse.parse_args()
 		if len(args.secret) > MAXSIZE:
 			return jsonifyFailure('secret is to large.')
-		elif blockchaininterface.checkIdentity(address, defunct_hash_message(text=args.secret), args.sign):
-			if config.test: # TODO: cleanup prints
+		elif blockchaininterface.checkIdentity(address, defunct_hash_message(text=SALT+args.secret), args.sign):	
+  		if config.test: # TODO: cleanup prints
 				print("New secret pushed:") # TODO: cleanup prints
 				print(args.secret) # TODO: cleanup prints
 			db.session.merge(Secret(address=address, secret=args.secret))
@@ -281,9 +282,14 @@ class BlockchainInterface(object):
 			raise RevertError('MREnclave verification not implemented')
 
 		secrets = {}
-		secrets[dataset]         = Secret.query.filter_by (address=dataset                       ).first() # Kd
-		secrets[beneficiary]     = Secret.query.filter_by (address=beneficiary                   ).first() # Kb
-		secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+		if dataset != "0x0000000000000000000000000000000000000000":
+			secrets[dataset] = Secret.query.filter_by(address=dataset).first() # Kd
+
+		if beneficiary != "0x0000000000000000000000000000000000000000":
+			secrets[beneficiary] = Secret.query.filter_by(address=beneficiary).first() # Kb
+
+		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
+			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
 
 		return {
 			'secrets': { key: str(value) if value else None for key, value in secrets.items() },

@@ -240,10 +240,10 @@ class BlockchainInterface(object):
 			self.w3.toChecksumAddress(auth['enclave'])                        \
 		]))
 
-		if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
+		if not self.verifySignature(scheduler, hash, auth['sign']):
 			raise RevertError("Invalid scheduler signature")
 
-		if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
+		if not self.verifySignature(auth['worker'], hash, auth['workersign']):
 			raise RevertError("Invalid worker signature")
 
 		# CHECK 3: MREnclave verification (only if part of the deal)
@@ -255,13 +255,22 @@ class BlockchainInterface(object):
 
 		secrets = {}
 		if dataset != "0x0000000000000000000000000000000000000000":
-			secrets[dataset] = Secret.query.filter_by(address=dataset).first() # Kd
+			secrets['dataset'] = {
+				'address': dataset,
+				'secret':  Secret.query.filter_by(address=dataset).first() # Kd
+			}
 
 		if beneficiary != "0x0000000000000000000000000000000000000000":
-			secrets[beneficiary] = Secret.query.filter_by(address=beneficiary).first() # Kb
+			secrets['beneficiary'] = {
+				'address': beneficiary,
+				'secret':  Secret.query.filter_by(address=beneficiary).first() # Kd
+			}
 
 		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
-			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+			secrets['enclave'] = {
+				'address': auth['enclave'],
+				'secret':  KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+			}
 
 		return {
 			'secrets': { key: str(value) if value else None for key, value in secrets.items() },

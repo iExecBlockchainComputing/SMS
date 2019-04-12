@@ -160,8 +160,15 @@ class BlockchainInterface(object):
 			'IexecHub':   json.load(open(f'{config.contracts}/IexecHub.json'  ))['abi'], \
 			'IERC1271':   json.load(open(f'{config.contracts}/IERC1271.json'  ))['abi'], \
 		}
-		self.IexecClerk = self.getContract(address=config.clerk, abiname='IexecClerk')
-		self.IexecHub   = self.getContract(address=config.hub,   abiname='IexecHub'  )
+		self.IexecHub = self.getContract(
+			address=config.hub,
+			abiname='IexecHub'
+		)
+		self.IexecClerk = self.getContract(
+			address=self.IexecHub.functions.iexecclerk().call(),
+			abiname='IexecClerk'
+		)
+
 
 	def getContract(self, address, abiname):
 		return self.w3.eth.contract(                                          \
@@ -270,7 +277,6 @@ if __name__ == '__main__':
 	parser.add_argument('--gateway',   type=str, default='http://localhost:8545', help='web3 gateway - default: http://localhost:8545')
 	parser.add_argument('--database',  type=str, default='sqlite:///:memory:',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
 	parser.add_argument('--contracts', type=str, default='contracts',             help='iExec SC folder - default: ./contracts'       )
-	parser.add_argument('--clerk',     type=str, required=True,                   help='iExecClerk address'                           )
 	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
 	params = parser.parse_args()
 

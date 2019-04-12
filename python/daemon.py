@@ -235,9 +235,9 @@ class BlockchainInterface(object):
 			'bytes32',                                                        \
 			'address'                                                         \
 		], [                                                                  \
-			auth['worker'],                                                   \
+			self.w3.toChecksumAddress(auth['worker']),                        \
 			auth['taskid'],                                                   \
-			auth['enclave']                                                   \
+			self.w3.toChecksumAddress(auth['enclave'])                        \
 		]))
 
 		if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):

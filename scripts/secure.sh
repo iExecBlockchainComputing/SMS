@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 
 curl -H "Content-Type: application/json" -X GET -d '{
 	"auth":

@@ -138,7 +138,7 @@ class SecureAPI(Resource):
 		super(SecureAPI, self).__init__()
 		# TODO: RequestParser for auth
 
-	def get(self):
+	def post(self):
 		try:
 			return jsonifySuccess(blockchaininterface.validateAndGetKeys(request.json['auth']))
 		except RevertError as e:
@@ -257,23 +257,23 @@ class BlockchainInterface(object):
 		if dataset != "0x0000000000000000000000000000000000000000":
 			secrets['dataset'] = {
 				'address': dataset,
-				'secret':  Secret.query.filter_by(address=dataset).first() # Kd
+				'secret':  str(Secret.query.filter_by(address=dataset).first()) # Kd
 			}
 
 		if beneficiary != "0x0000000000000000000000000000000000000000":
 			secrets['beneficiary'] = {
 				'address': beneficiary,
-				'secret':  Secret.query.filter_by(address=beneficiary).first() # Kd
+				'secret':  str(Secret.query.filter_by(address=beneficiary).first()) # Kd
 			}
 
 		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
 			secrets['enclave'] = {
 				'address': auth['enclave'],
-				'secret':  KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+				'secret':  str(KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first()) # Ke
 			}
 
 		return {
-			'secrets': { key: str(value) if value else None for key, value in secrets.items() },
+			'secrets': { key: value if value else None for key, value in secrets.items() },
 			'params':  params,
 		}
 

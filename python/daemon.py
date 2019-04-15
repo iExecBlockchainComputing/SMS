@@ -138,7 +138,7 @@ class SecureAPI(Resource):
 		super(SecureAPI, self).__init__()
 		# TODO: RequestParser for auth
 
-	def get(self):
+	def post(self):
 		try:
 			return jsonifySuccess(blockchaininterface.validateAndGetKeys(request.json['auth']))
 		except RevertError as e:

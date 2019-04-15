@@ -1,6 +1,6 @@
 #!/bin/bash
 
-curl -H "Content-Type: application/json" -X GET -d '{
+curl -H "Content-Type: application/json" -X POST -d '{
 	"auth":
 	{
 		"worker":     "0x748e091bf16048cb5103E0E10F9D5a8b7fBDd860",

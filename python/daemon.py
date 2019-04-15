@@ -255,28 +255,18 @@ class BlockchainInterface(object):
 
 		secrets = {}
 		if dataset != "0x0000000000000000000000000000000000000000":
-			secrets['dataset'] = {
-				'address': dataset,
-				'secret':  str(Secret.query.filter_by(address=dataset).first()) # Kd
-			}
+			Kd = Secret.query.filter_by(address=dataset).first()
+			secrets['dataset'] = { 'address': dataset, 'secret': str(Kd) if Kd else None }
 
 		if beneficiary != "0x0000000000000000000000000000000000000000":
-			secrets['beneficiary'] = {
-				'address': beneficiary,
-				'secret':  str(Secret.query.filter_by(address=beneficiary).first()) # Kd
-			}
+			Kb = Secret.query.filter_by(address=beneficiary).first()
+			secrets['beneficiary'] = { 'address': beneficiary, 'secret': str(Kb) if Kb else None }
 
 		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
-			secrets['enclave'] = {
-				'address': auth['enclave'],
-				'secret':  str(KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first()) # Ke
-			}
+			Ke = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first()
+			secrets['enclave'] = { 'address': auth['enclave'], 'secret': str(Ke) if Ke else None }
 
-		return {
-			'secrets': { key: value if value else None for key, value in secrets.items() },
-			'params':  params,
-		}
-
+		return { 'secrets': secrets, 'params':  params }
 
 
 if __name__ == '__main__':

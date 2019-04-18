@@ -3,7 +3,9 @@ FROM python:3.7.2
 RUN pip3 install web3 eth_account flask flask_restful flask_sqlalchemy
 
 RUN mkdir /sms
-COPY . /sms
+COPY docker-launch.sh                        /sms/docker-launch.sh
+COPY python                                  /sms/python
+COPY node_modules/iexec-poco/build/contracts /sms/contracts
 WORKDIR /sms
 
 ENTRYPOINT ["./docker-launch.sh"]

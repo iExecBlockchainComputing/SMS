@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python3 python/daemon.py --clerk $CLERK --hub $HUB --gateway $GATEWAY --contracts /poco-contracts
+python3 python/daemon.py --hub $HUB --gateway $GATEWAY --contracts contracts

@@ -1,0 +1,3 @@
+FROM python_scone
+
+COPY sms /sms

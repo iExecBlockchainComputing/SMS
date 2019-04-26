@@ -1,0 +1,3 @@
+FROM sms_scone
+
+COPY conf/fspf.pb fspf.pb

@@ -13,6 +13,7 @@ import re
 import os
 import random
 import string
+#from scone_cli import fspf
 
 import web3
 from web3                 import Web3, HTTPProvider
@@ -104,16 +105,11 @@ class SecretAPI(Resource):
 			return jsonifyFailure("No secret found")
 
 	def post(self, address):
-		print (request.is_json) # TODO: cleanup prints
-		print (request.get_json()) # TODO: cleanup prints
 		args = self.reqparse.parse_args()
 		if len(args.secret) > MAXSIZE:
 			return jsonifyFailure('secret is to large.')
 		elif blockchaininterface.checkIdentity(address, defunct_hash_message(text=SALT+args.secret), args.sign):
-  		if config.test: # TODO: cleanup prints
-				print("New secret pushed:") # TODO: cleanup prints
-				print(args.secret) # TODO: cleanup prints
-			db.session.merge(Secret(address=address, secret=args.secret))
+			if config.test:db.session.merge(Secret(address=address, secret=args.secret))
 			db.session.commit()
 			return jsonifySuccess({
 				'address': address,
@@ -128,8 +124,6 @@ class GenerateAPI(Resource):
 		super(GenerateAPI, self).__init__()
 
 	def get(self, dealid):
-		print("generate") # TODO: cleanup prints
-		print(dealid) # TODO: cleanup prints
 		Ke = KeyPair.query.filter_by(dealid=dealid).first()
 		if Ke is not None:
 			return jsonifySuccess({ 'address': Ke.address, 'dealid': dealid })
@@ -161,7 +155,7 @@ class SecureAPI(Resource):
 		super(SecureAPI, self).__init__()
 		# TODO: RequestParser for auth
 
-	def post(self):
+	def get(self):
 		try:
 			return jsonifySuccess(blockchaininterface.validateAndGetKeys(request.json['auth']))
 		except RevertError as e:
@@ -196,16 +190,9 @@ class BlockchainInterface(object):
 			'IexecHub':   json.load(open(f'{config.contracts}/IexecHub.json'  ))['abi'], \
 			'IERC1271':   json.load(open(f'{config.contracts}/IERC1271.json'  ))['abi'], \
 		}
-		self.IexecHub = self.getContract(
-			address=config.hub,
-			abiname='IexecHub'
-		)
-		self.IexecClerk = self.getContract(
-			address=self.IexecHub.functions.iexecclerk().call(),
-			abiname='IexecClerk'
-		)
+		self.IexecClerk = self.getContract(address=config.clerk, abiname='IexecClerk')
+		self.IexecHub   = self.getContract(address=config.hub,   abiname='IexecHub'  )
 		self.test       = config.test
-
 
 	def getContract(self, address, abiname):
 		return self.w3.eth.contract(                                          \
@@ -249,12 +236,11 @@ class BlockchainInterface(object):
 			raise RevertError("Task is not active")
 
 		# Get deal details
-		dealid = task[1]
-
+		dealid = "0x{}".format(task[1].hex())
+		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
+			 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
 		# deal = self.IexecClerk.functions.viewDeal(dealid).call()
 		# print(deal)
-		deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
-		     + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
 
 		app         = deal[0]
 		dataset     = deal[3]
@@ -266,20 +252,20 @@ class BlockchainInterface(object):
 		# CHECK 2: Authorisation to contribute must be authentic
 		# web3 v4.8.2 → soliditySha3
 		# web3 v5.0.0 → solidityKeccak
-		hash = defunct_hash_message(self.w3.soliditySha3([                    \
+		hash = defunct_hash_message(self.w3.solidityKeccak([                  \
 			'address',                                                        \
 			'bytes32',                                                        \
 			'address'                                                         \
 		], [                                                                  \
-			self.w3.toChecksumAddress(auth['worker']),                        \
+			auth['worker'],                                                   \
 			auth['taskid'],                                                   \
-			self.w3.toChecksumAddress(auth['enclave'])                        \
+			auth['enclave']                                                   \
 		]))
 
-		if not self.verifySignature(scheduler, hash, auth['sign']):
+		if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
 			raise RevertError("Invalid scheduler signature")
 
-		if not self.verifySignature(auth['worker'], hash, auth['workersign']):
+		if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
 			raise RevertError("Invalid worker signature")
 
 		# CHECK 3: MREnclave verification (only if part of the deal)
@@ -291,18 +277,18 @@ class BlockchainInterface(object):
 
 		secrets = {}
 		if dataset != "0x0000000000000000000000000000000000000000":
-			Kd = Secret.query.filter_by(address=dataset).first()
-			secrets['dataset'] = { 'address': dataset, 'secret': str(Kd) if Kd else None }
+			secrets[dataset] = Secret.query.filter_by(address=dataset).first() # Kd
 
 		if beneficiary != "0x0000000000000000000000000000000000000000":
-			Kb = Secret.query.filter_by(address=beneficiary).first()
-			secrets['beneficiary'] = { 'address': beneficiary, 'secret': str(Kb) if Kb else None }
+			secrets[beneficiary] = Secret.query.filter_by(address=beneficiary).first() # Kb
 
 		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
-			Ke = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first()
-			secrets['enclave'] = { 'address': auth['enclave'], 'secret': str(Ke) if Ke else None }
+			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
 
-		return { 'secrets': secrets, 'params':  params }
+		return {
+			'secrets': { key: str(value) if value else None for key, value in secrets.items() },
+			'params':  params,
+		}
 
 	def setPalaemonConf(self, auth):
 		if self.test:
@@ -317,14 +303,181 @@ class BlockchainInterface(object):
 			}
 			deal = ""
 
+		else:
+			taskid = auth['taskid']
+			task = self.IexecHub.functions.viewTaskABILegacy(taskid).call()
+			# task = self.IexecHub.functions.viewTask(taskid).call()
+			# print(task)
+
+			# CHECK 1: Task must be Active
+			if not task[0] == 1:
+				raise RevertError("Task is not active")
+
+			# Get deal details
+			dealid = task[1]
+			deal = self.IexecClerk.functions.viewDealABILegacy_pt1(dealid).call() \
+				 + self.IexecClerk.functions.viewDealABILegacy_pt2(dealid).call()
+			# deal = self.IexecClerk.functions.viewDeal(dealid).call()
+			# print(deal)
+
+			app         = deal[0]
+			dataset     = deal[3]
+			scheduler   = deal[7]
+			tag         = deal[10]
+			beneficiary = deal[12]
+			params      = deal[14]
+
+			# CHECK 2: Authorisation to contribute must be authentic
+			# web3 v4.8.2 → soliditySha3
+			# web3 v5.0.0 → solidityKeccak
+			hash = defunct_hash_message(self.w3.solidityKeccak([              \
+				'address',                                                    \
+				'bytes32',                                                    \
+				'address'                                                     \
+			], [                                                              \
+				auth['worker'],                                               \
+				auth['taskid'],                                               \
+				auth['enclave']                                               \
+			]))
+			if not scheduler == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['sign']):
+				raise RevertError("Invalid scheduler signature")
+
+			if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
+				raise RevertError("Invalid worker signature")
+
+		confInfo = self.getConfInfo(task, deal)
+
+		conf = self.generatePalaemonConfFile(confInfo)
+
+		#Post session to Palaemon, over https. this is not secure, we need to attest Palaemon.
+		#response = requests.post(
+		#		'https://' + casAddress + '/session',
+		#		data=conf,
+		#		cert=('./conf/client.crt', './conf/client-key.key'),
+		#		verify=False
+		#	)
+		return {
+			'sessionId':      confInfo['session_id'],
+			'outputFspf':     confInfo['output_fspf'],
+			'beneficiaryKey': confInfo['beneficiary_key']
+		}
+
+	def generatePalaemonConfFile(self, confInfo):
+		#insecure, better to hardcode it.
+		template = Template(open(confTemplatePath,"r").read())
+		return template.substitute(
+			MRENCLAVE              = confInfo['MREnclave'],
+			SESSION_ID             = confInfo['session_id'],
+			COMMAND                = confInfo['command'],
+			OUTPUT_FSPF_KEY        = confInfo['output_fspf_key'],
+			OUTPUT_FSPF_TAG        = confInfo['output_fspf_tag'],
+			DATA_FSPF_KEY          = confInfo['data_fspf_key'],
+			DATA_FSPF_TAG          = confInfo['data_fspf_tag'],
+			FSPF_KEY               = confInfo['fspf_key'],
+			FSPF_TAG               = confInfo['fspf_tag'],
+			IEXEC_ENCLAVE_FSPF_KEY = iexec_enclave_fspf_key,
+			IEXEC_ENCLAVE_FSPF_TAG = iexec_enclave_fspf_tag,
+			ENCLAVE_KEY			   = confInfo['enclave_challenge_key'],
+			TASK_ID				   = confInfo['task_id'],
+			WORKER_ADDRESS 		   = confInfo['worker_address']
+		)
+
+	def getConfInfo(self, task, deal):
+
+		if self.test:
+			app         = task['app']
+			dataset     = task['dataset']
+			beneficiary = task['beneficiary']
+			dealid      = task['dealid']
+			params      = task['params']
+		else:
+			app         = deal[0]
+			dataset     = deal[3]
+			beneficiary = deal[12]
+			params      = deal[14]
+
+		#now gathering different info for building Palaemon conf
+		confInfo = dict()
+
+		#info for dApp (MREnclave for different heap size, fspf_tag, fspf_key)
+		appInfo = self.getAppInfo(app)
+		print("AppInfo:", appInfo)
+		confInfo.update(appInfo)
+
+		#info for dataset (dataset_fspf_key, dataset_fspf_tag)
+		datasetInfo = self.getDatasetInfo(dataset)
+		print("Dataset info:", datasetInfo)
+		confInfo.update(datasetInfo)
+
+		#info for output volume encryption (used by scone runtime)
+		beneficiaryKey = Secret.query.filter_by(address=beneficiary).first().secret;
+		outputVolumeInfo = self.getOutputVolumeInfo(beneficiary, beneficiaryKey)
+		confInfo.update(outputVolumeInfo)
+
+		confInfo['enclave_challenge_key'] 	= KeyPair.query.filter_by(dealid=dealid).first()
+		confInfo['session_id']          	= str(uuid.uuid4())
+		confInfo['command']             	= params
+		confInfo['task_id']					= task['id']
+		confInfo['worker_address']			= task['worker_address']
+
+		return confInfo
+
+	def getAppInfo(self, dAppAddress):
+		dAppFingerprint = self.getContract(address=dAppAddress, abiname='App').functions.m_appMREnclave().call()
+		print("kk")
+		if dAppFingerprint is None: raise RevertError("Couldn't find dAppFingerprint")
+		[fspf_key, fspf_tag, MREnclave] = dAppFingerprint.decode("utf-8").split("|")[:3]
+
+		return {
+			"fspf_key":  fspf_key,
+			"fspf_tag":  fspf_tag,
+			"MREnclave": MREnclave
+		}
+
+	def getDatasetInfo(self, dataset):
+		secret = Secret.query.filter_by (address=dataset).first()
+		if secret is None: raise RevertError("Couldn't find dataset info")
+		[data_fspf_key, data_fspf_tag] = secret.secret.split("|")[:2]
+
+		return {
+			'data_fspf_key': data_fspf_key,
+			'data_fspf_tag': data_fspf_tag,
+			'address':       dataset
+		}
+
+	#return dict containing output_fspf (as a string), output_fspf_tag, output_fspf_key, and  output_fspf_key encrypted with beneficiary key.
+	#not secure, we write everything on disk, need to do all this inside enclave.
+	def getOutputVolumeInfo(self, beneficiary, beneficiaryKey):
+		#shell script to launch docker scone-cli, to create fspf and encrypt it.
+		beneficiaryDirPath="./output_fspf/"+beneficiary
+		try:
+			os.stat(beneficiaryDirPath)
+		except:
+			os.mkdir(beneficiaryDirPath)
+
+		#here we need to call scone libraries
+		fspfPath = "output_fspf/" + beneficiary + "/volume.fspf"
+		(key, tag) = fspf.create_empty_volume_encr(fspfPath)
+
+		with open(fspfPath, "rb") as file:
+			fspf = file.read() #encrypted fspf (binary) should we encode in base64
+
+		return {
+			'output_fspf':            base64.b64encode(fspf),
+			'output_fspf_key':        key,
+			'output_fspf_tag':        tag,
+			'beneficiary_key':        beneficiaryKey
+		}
+
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--host',      type=str, default='0.0.0.0',               help='REST api host - default: 0.0.0.0'             )
 	parser.add_argument('--port',      type=int, default=5000,                    help='REST api port - default: 5000'                )
 	parser.add_argument('--gateway',   type=str, default='http://localhost:8545', help='web3 gateway - default: http://localhost:8545')
-	parser.add_argument('--database',  type=str, default='sqlite:////tmp/sms.db', help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
+	parser.add_argument('--database',  type=str, default='sqlite:///:memory:',         help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
 	parser.add_argument('--contracts', type=str, default='contracts',             help='iExec SC folder - default: ./contracts'       )
+	parser.add_argument('--clerk',     type=str, required=True,                   help='iExecClerk address'                           )
 	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
 	parser.add_argument('--test',      action="store_true")
 	config = parser.parse_args()

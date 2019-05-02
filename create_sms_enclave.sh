@@ -1,6 +1,8 @@
 #!/bin/bash
 
-docker build -f DockerPythonBuild -t sms_scone .
+docker build -f DockerPythonBuild -t python_scone .
+
+docker build -f DockerFirstBuild -t sms_scone .
 
 docker run -v $PWD/python:/python sms_scone sh -c \
 "cp -r /usr/lib/python3.6 /python;"

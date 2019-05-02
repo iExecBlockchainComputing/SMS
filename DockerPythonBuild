@@ -8,12 +8,5 @@ RUN pip install requests docker web3 eth_account flask flask_restful flask_sqlal
 
 RUN cp /usr/bin/python3.6 /usr/bin/python3
 
-COPY libscone-cli.so /usr/lib/libscone-cli.so
-
-COPY scone_cli /usr/lib/python3.6/scone_cli
-
-COPY launch.sh launch.sh
-
-COPY sms /sms
 
 CMD python

@@ -1,3 +1,13 @@
 FROM python_scone
 
+COPY libscone-cli.so /usr/lib/libscone-cli.so
+
+COPY scone_cli /usr/lib/python3.6/scone_cli
+
+COPY launch.sh /launch.sh
+
 COPY sms /sms
+
+COPY palaemonConfTemplate.txt /palaemonConfTemplate.txt
+
+RUN mkdir output_fspf

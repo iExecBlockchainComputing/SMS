@@ -4,7 +4,7 @@ RUN apk update
 
 RUN apk add gcc musl-dev
 
-RUN pip install requests docker web3 eth_account flask flask_restful flask_sqlalchemy Crypto
+RUN pip install requests docker web3 eth_account flask flask_restful flask_sqlalchemy Crypto python-gnupg
 
 RUN cp /usr/bin/python3.6 /usr/bin/python3
 

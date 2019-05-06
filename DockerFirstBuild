@@ -10,4 +10,6 @@ COPY sms /sms
 
 COPY palaemonConfTemplate.txt /palaemonConfTemplate.txt
 
+
+
 RUN mkdir output_fspf

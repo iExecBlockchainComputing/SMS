@@ -301,9 +301,9 @@ class BlockchainInterface(object):
 	def setPalaemonConf(self, auth):
 		if self.test:
 			task = {
-				'dealid':      		"0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560",
-				'app':         		"0x63C8De22025a7A463acd6c89C50b27013eCa6472",
-				'dataset':     		"0x4b40D43da477bBcf69f5fd26467384355a1686d6",
+				'dealid':"0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560",
+				'app': "0x0C5d445bD1466c340B9Fa77992EFD98cB5f1878C",
+				'dataset': "0xDe6BDB3ab04A5e9176599A7810E8c73DA9A6dfC4",
 				'beneficiary': 		"0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB",
 				'params':      		"blob",
 				'id':				auth['taskid'],
@@ -361,7 +361,7 @@ class BlockchainInterface(object):
 		response = requests.post(
 				'https://' + casAddress + '/session',
 				data=conf,
-				cert=('./conf/client.crt', './conf/client-key.key'),
+				cert=('./sms/client.crt', './sms/client-key.key'),
 				verify=False
 			)
 		return {
@@ -463,18 +463,17 @@ class BlockchainInterface(object):
 			os.mkdir(beneficiaryDirPath)
 
 		#here we need to call scone libraries
-		fspfPath = "output_fspf/" + beneficiary
+		fspfPath = "output_fspf/" + beneficiary + "/volume.fspf"
 
-		os.chdir(fspfPath)
-		(key, tag) = fspf.create_empty_volume_encr("volume.fspf")
+		(key, tag) = fspf.create_empty_volume_encr(fspfPath)
 
-		with open("v", "rb") as file:
+		with open(fspfPath, "rb") as file:
 			fspfFile = file.read() #encrypted fspf (binary) should we encode in base64
 
 		return {
 			'output_fspf':            base64.b64encode(fspfFile).decode('ascii'),
-			'output_fspf_key':        base64.b64encode(tag).decode('ascii'),
-			'output_fspf_tag':        base64.b64encode(tag).decode('ascii'),
+			'output_fspf_key':        key.hex(),
+			'output_fspf_tag':        tag.hex(),
 			'beneficiary_key':        beneficiaryKey
 		}
 
@@ -484,7 +483,7 @@ if __name__ == '__main__':
 	parser.add_argument('--host',      type=str, default='0.0.0.0',               help='REST api host - default: 0.0.0.0'             )
 	parser.add_argument('--port',      type=int, default=5000,                    help='REST api port - default: 5000'                )
 	parser.add_argument('--gateway',   type=str, default='http://localhost:8545', help='web3 gateway - default: http://localhost:8545')
-	parser.add_argument('--database',  type=str, default='sqlite:////tmp/sms.db',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
+	parser.add_argument('--database',  type=str, default='sqlite:////sms/sms.db',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
 	parser.add_argument('--contracts', type=str, default='contracts',             help='iExec SC folder - default: ./contracts'       )
 	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
 	parser.add_argument('--test',      action="store_true")

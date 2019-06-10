@@ -27,7 +27,7 @@ from flask_sqlalchemy     import SQLAlchemy
 MAXSIZE = 4096
 SALT = "iexec_sms_secret:"
 confTemplatePath            = "./palaemonConfTemplate.txt"
-casAddress                  = "127.0.0.1:8081"
+casAddress                  = "172.17.0.3:8081"
 iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
 iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
 # +---------------------------------------------------------------------------+
@@ -193,9 +193,8 @@ class BlockchainInterface(object):
 			address=Web3.toChecksumAddress(config.hub),
 			abiname='IexecHub'
 		)
-		print("ef")
 		self.IexecClerk = self.getContract(
-			address=self.IexecHub.functions.iexecclerk().call(),
+				address=self.IexecHub.functions.iexecclerk().call(),
 			abiname='IexecClerk'
 		)
 		self.test = config.test
@@ -279,7 +278,31 @@ class BlockchainInterface(object):
 		# CHECK 3: MREnclave verification (only if part of the deal)
 		if tag[31] & 0x01:
 			# Get enclave secret
-			ExpectedMREnclave = self.getContract(address=app, abiname='App').functions.m_appMREnclave().call()
+			taskInfo = {
+				'dealid': 			dealid,
+				'app': 				app,
+				'dataset': 			dataset,
+				'beneficiary': 		beneficiary,
+				'params':      		params,
+				'id':				auth['taskid'],
+				'worker_address':	auth['worker']
+			}
+
+			confInfo = self.getConfInfo(taskInfo)
+
+			conf = self.generatePalaemonConfFile(confInfo)
+			requests.post(
+					'https://' + casAddress + '/session',
+					data=conf,
+					cert=('./sms/client.crt', './sms/client-key.key'),
+					verify=False
+				)
+
+			return {
+				'sessionId':      confInfo['session_id'],
+				'outputFspf':     confInfo['output_fspf'],
+				'beneficiaryKey': confInfo['beneficiary_key']
+			}
 			# print(f'MREnclave: {MREnclave}')
 			raise RevertError('MREnclave verification not implemented')
 
@@ -302,8 +325,8 @@ class BlockchainInterface(object):
 		if self.test:
 			task = {
 				'dealid':"0x94757d256ec07228a010ebf3f04048487583f2818121bcef961268f4fb8db560",
-				'app': "0x0C5d445bD1466c340B9Fa77992EFD98cB5f1878C",
-				'dataset': "0xDe6BDB3ab04A5e9176599A7810E8c73DA9A6dfC4",
+				'app': "0x8E26CDFD867711a403D990001efc93F3B663FE05",
+				'dataset': "0x53DdBc028135A1B2B3000f7ba9891233947b1538",
 				'beneficiary': 		"0xC08C3def622Af1476f2Db0E3CC8CcaeAd07BE3bB",
 				'params':      		"blob",
 				'id':				auth['taskid'],
@@ -353,17 +376,16 @@ class BlockchainInterface(object):
 			if not auth['worker'] == self.w3.eth.account.recoverHash(message_hash=hash, signature=auth['workersign']):
 				raise RevertError("Invalid worker signature")
 
-		confInfo = self.getConfInfo(task, deal)
+		confInfo = self.getConfInfo(task)
 
 		conf = self.generatePalaemonConfFile(confInfo)
-
-		#Post session to Palaemon, over https. this is not secure, we need to attest Palaemon.
-		response = requests.post(
+		requests.post(
 				'https://' + casAddress + '/session',
 				data=conf,
 				cert=('./sms/client.crt', './sms/client-key.key'),
 				verify=False
 			)
+
 		return {
 			'sessionId':      confInfo['session_id'],
 			'outputFspf':     confInfo['output_fspf'],
@@ -390,19 +412,13 @@ class BlockchainInterface(object):
 			WORKER_ADDRESS 		   = confInfo['worker_address']
 		)
 
-	def getConfInfo(self, task, deal):
+	def getConfInfo(self, task):
 
-		if self.test:
-			app         = task['app']
-			dataset     = task['dataset']
-			beneficiary = task['beneficiary']
-			dealid      = task['dealid']
-			params      = task['params']
-		else:
-			app         = deal[0]
-			dataset     = deal[3]
-			beneficiary = deal[12]
-			params      = deal[14]
+		app         = task['app']
+		dataset     = task['dataset']
+		beneficiary = task['beneficiary']
+		dealid      = task['dealid']
+		params      = task['params']
 
 		#now gathering different info for building Palaemon conf
 		confInfo = dict()
@@ -482,8 +498,8 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--host',      type=str, default='0.0.0.0',               help='REST api host - default: 0.0.0.0'             )
 	parser.add_argument('--port',      type=int, default=5000,                    help='REST api port - default: 5000'                )
-	parser.add_argument('--gateway',   type=str, default='http://localhost:8545', help='web3 gateway - default: http://localhost:8545')
-	parser.add_argument('--database',  type=str, default='sqlite:////sms/sms.db',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
+	parser.add_argument('--gateway',   type=str, default='https://rpckovan1w7wagudqhtw5khzsdtv.iex.ec/', help='web3 gateway - default: http://localhost:8545')
+	parser.add_argument('--database',  type=str, default='sqlite:///sms/sms.db',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
 	parser.add_argument('--contracts', type=str, default='contracts',             help='iExec SC folder - default: ./contracts'       )
 	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
 	parser.add_argument('--test',      action="store_true")

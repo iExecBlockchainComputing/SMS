@@ -1,8 +1,6 @@
 #!/bin/bash
 
-docker build -f DockerPythonBuild -t python_scone .
-
-docker build -f DockerFirstBuild -t sms_scone .
+docker build -f SmsFirstBuild -t sms_scone .
 
 docker run -v $PWD/python:/python sms_scone sh -c \
 "cp -r /usr/lib/python3.6 /python;"
@@ -28,4 +26,4 @@ FINGERPRINT="$FSPF_KEY|$FSPF_TAG|$MRENCLAVE"
 
 echo "Fingerprint: $FINGERPRINT"
 
-docker build -f DockerSecondBuild -t sms_scone .
+docker build -f SmsSecondBuild -t sms_scone .

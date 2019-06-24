@@ -29,7 +29,7 @@ from flask_sqlalchemy     import SQLAlchemy
 MAXSIZE = 4096
 SALT = "iexec_sms_secret:"
 confTemplatePath            = "./palaemonConfTemplate.txt"
-casAddress                  = "172.17.0.3:8081"
+casAddress                  = "cas:8081"
 iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
 iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
 # +---------------------------------------------------------------------------+
@@ -294,6 +294,7 @@ class BlockchainInterface(object):
 			confInfo = self.getConfInfo(taskInfo)
 
 			conf = self.generatePalaemonConfFile(confInfo)
+
 			requests.post(
 					'https://' + casAddress + '/session',
 					data=conf,
@@ -302,9 +303,9 @@ class BlockchainInterface(object):
 				)
 
 			return {
-				'sessionId':      confInfo['session_id'],
-				'outputFspf':     confInfo['output_fspf'],
-				'beneficiaryKey': confInfo['beneficiary_key']
+				'sessionId':      		confInfo['session_id'],
+				'sconeVolumeFspf':     	confInfo['scone_volume_fspf'],
+				'beneficiaryKey': 		confInfo['beneficiary_key']
 			}
 
 		secrets = {}
@@ -315,7 +316,7 @@ class BlockchainInterface(object):
 			secrets[beneficiary] = Secret.query.filter_by(address=beneficiary).first() # Kb
 
 		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
-			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], dealid=dealid).first() # Ke
+			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], taskid=taskid).first() # Ke
 
 		return {
 			'secrets': { key: str(value) if value else None for key, value in secrets.items() },
@@ -329,8 +330,8 @@ class BlockchainInterface(object):
 			MRENCLAVE              = confInfo['MREnclave'],
 			SESSION_ID             = confInfo['session_id'],
 			COMMAND                = confInfo['command'],
-			OUTPUT_FSPF_KEY        = confInfo['output_fspf_key'],
-			OUTPUT_FSPF_TAG        = confInfo['output_fspf_tag'],
+			SCONE_FSPF_KEY        = confInfo['scone_volume_fspf_key'],
+			SCONE_FSPF_TAG        = confInfo['scone_volume_fspf_tag'],
 			DATA_FSPF_KEY          = confInfo['data_fspf_key'],
 			DATA_FSPF_TAG          = confInfo['data_fspf_tag'],
 			FSPF_KEY               = confInfo['fspf_key'],
@@ -344,6 +345,7 @@ class BlockchainInterface(object):
 
 	def getConfInfo(self, task):
 
+		taskid		= task['taskid']
 		app         = task['app']
 		dataset     = task['dataset']
 		beneficiary = task['beneficiary']
@@ -365,10 +367,10 @@ class BlockchainInterface(object):
 
 		#info for output volume encryption (used by scone runtime)
 		beneficiaryKey = Secret.query.filter_by(address=beneficiary).first().secret;
-		outputVolumeInfo = self.getOutputVolumeInfo(beneficiary, beneficiaryKey)
-		confInfo.update(outputVolumeInfo)
+		sconeVolumeInfo = self.getSconeVolumeInfo(beneficiary, beneficiaryKey)
+		confInfo.update(sconeVolumeInfo)
 
-		confInfo['enclave_challenge_key'] 	= KeyPair.query.filter_by(dealid=dealid).first().private
+		confInfo['enclave_challenge_key'] 	= KeyPair.query.filter_by(taskid=taskid).first().private
 		confInfo['session_id']          	= str(uuid.uuid4())
 		confInfo['command']             	= params
 		confInfo['task_id']					= task['id']
@@ -400,16 +402,16 @@ class BlockchainInterface(object):
 
 	#return dict containing output_fspf (as a string), output_fspf_tag, output_fspf_key, and  output_fspf_key encrypted with beneficiary key.
 	#not secure, we write everything on disk, need to do all this inside enclave.
-	def getOutputVolumeInfo(self, beneficiary, beneficiaryKey):
+	def getSconeVolumeInfo(self, beneficiary, beneficiaryKey):
 		#shell script to launch docker scone-cli, to create fspf and encrypt it.
-		beneficiaryDirPath="./output_fspf/"+beneficiary
+		beneficiaryDirPath="./scone_volume_fspf/"+beneficiary
 		try:
 			os.stat(beneficiaryDirPath)
 		except:
 			os.mkdir(beneficiaryDirPath)
 
 		#here we need to call scone libraries
-		fspfPath = "output_fspf/" + beneficiary + "/volume.fspf"
+		fspfPath = "scone_volume_fspf/" + beneficiary + "/volume.fspf"
 
 		(key, tag) = fspf.create_empty_volume_encr(fspfPath)
 
@@ -417,9 +419,9 @@ class BlockchainInterface(object):
 			fspfFile = file.read() #encrypted fspf (binary) should we encode in base64
 
 		return {
-			'output_fspf':            base64.b64encode(fspfFile).decode('ascii'),
-			'output_fspf_key':        key.hex(),
-			'output_fspf_tag':        tag.hex(),
+			'scone_volume_fspf':            base64.b64encode(fspfFile).decode('ascii'),
+			'scone_volume_fspf_key':        key.hex(),
+			'scone_volume_fspf_tag':        tag.hex(),
 			'beneficiary_key':        beneficiaryKey
 		}
 
@@ -443,7 +445,7 @@ if __name__ == '__main__':
 
 	# SETUP ENDPOINTS
 	api.add_resource(SecretAPI,   '/secret/<string:address>',              endpoint='secret'  ) # address: account or ressource SC
-	api.add_resource(GenerateAPI, '/attestation/generate/<string:dealid>', endpoint='generate') # dealid
+	api.add_resource(GenerateAPI, '/attestation/generate/<string:taskid>', endpoint='generate') # taskid
 	api.add_resource(VerifyAPI,   '/attestation/verify/<string:address>',  endpoint='verify'  ) # address: enclaveChallenge
 	api.add_resource(SecureAPI,   '/secure',                               endpoint='secure'  )
 	api.add_resource(SessionAPI,  '/securesession/generate',               endpoint='sessiongenerate'  )

@@ -26,16 +26,17 @@ from flask                import Flask, jsonify, make_response, request
 from flask_restful        import Api, Resource, reqparse
 from flask_sqlalchemy     import SQLAlchemy
 
-MAXSIZE = 4096
-SALT = "iexec_sms_secret:"
-confTemplatePath            = "./palaemonConfTemplate.txt"
+MAXSIZE                     = 4096
+SALT                        = "iexec_sms_secret:"
+confTemplatePath            = "./python/palaemonConfTemplate.txt" # WARNING: RELATIVE PATH
+certificats                 = ("./python/client.crt", "./python/client-key.key"), # WARNING: RELATIVE PATH
 casAddress                  = "cas:8081"
 iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
 iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
 # +---------------------------------------------------------------------------+
 # |                           ENVIRONMENT VARIABLES                           |
 # +---------------------------------------------------------------------------+
-app = Flask("SMS prototype - v1")
+app = Flask("SMS scone - v1")
 app.config['SQLALCHEMY_DATABASE_URI'       ] = "sqlite:///:memory:" # overwritten by params.database
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 api = Api(app)
@@ -192,14 +193,13 @@ class BlockchainInterface(object):
 			'IERC1271':   json.load(open(f'{config.contracts}/IERC1271.json'  ))['abi'], \
 		}
 		self.IexecHub = self.getContract(
-			address=Web3.toChecksumAddress(config.hub),
-			abiname='IexecHub'
+			address = self.w3.toChecksumAddress(config.hub),
+			abiname = 'IexecHub'
 		)
 		self.IexecClerk = self.getContract(
-				address=self.IexecHub.functions.iexecclerk().call(),
-			abiname='IexecClerk'
+			address = self.IexecHub.functions.iexecclerk().call(),
+			abiname = 'IexecClerk'
 		)
-		self.test = config.test
 
 	def getContract(self, address, abiname):
 		return self.w3.eth.contract(                                          \
@@ -207,7 +207,6 @@ class BlockchainInterface(object):
 			abi=self.ABIs[abiname],                                           \
 			ContractFactoryClass=Contract,                                    \
 		)
-
 
 	def verifySignature(self, identity, hash, signature):
 		try:
@@ -277,110 +276,75 @@ class BlockchainInterface(object):
 		if not self.verifySignature(auth['worker'], hash, auth['workersign']):
 			raise RevertError("Invalid worker signature")
 
-		# CHECK 3: MREnclave verification (only if part of the deal)
+		# If TEE tag is enable, use scone
 		if tag[31] & 0x01:
 			# Get enclave secret
-			taskInfo = {
-				'taskid':			taskid,
-				'dealid': 			dealid,
-				'app': 				app,
-				'dataset': 			dataset,
-				'beneficiary': 		beneficiary,
-				'params':      		params,
-				'id':				auth['taskid'],
-				'worker_address':	auth['worker']
-			}
-
-			confInfo = self.getConfInfo(taskInfo)
-
-			conf = self.generatePalaemonConfFile(confInfo)
+			confInfo = self.getConfInfo(
+				taskid      = taskid,
+				dealid      = dealid,
+				app         = app,
+				dataset     = dataset,
+				beneficiary = beneficiary,
+				params      = params,
+				worker      = auth['worker']
+			)
 
 			requests.post(
-					'https://' + casAddress + '/session',
-					data=conf,
-					cert=('./sms/client.crt', './sms/client-key.key'),
-					verify=False
-				)
+				'https://{}/session'.format(casAddress),
+				data   = self.generatePalaemonConfFile(confInfo),
+				cert   = certificats,
+				verify = False
+			)
 
 			return {
-				'sessionId':      		confInfo['session_id'],
-				'sconeVolumeFspf':     	confInfo['scone_volume_fspf'],
-				'beneficiaryKey': 		confInfo['beneficiary_key']
+				'sessionId':       confInfo['session_id'],
+				'sconeVolumeFspf': confInfo['scone_volume_fspf'],
+				'beneficiaryKey':  confInfo['beneficiary_key']
 			}
 
-		secrets = {}
-		if dataset != "0x0000000000000000000000000000000000000000":
-			secrets[dataset] = Secret.query.filter_by(address=dataset).first() # Kd
+		# Otherwise send secret in the answer
+		else:
+			secrets = {}
+			if dataset != "0x0000000000000000000000000000000000000000":
+				Kd = Secret.query.filter_by(address=dataset).first()
+				secrets['dataset'] = { 'address': dataset, 'secret': str(Kd) if Kd else None }
 
-		if beneficiary != "0x0000000000000000000000000000000000000000":
-			secrets[beneficiary] = Secret.query.filter_by(address=beneficiary).first() # Kb
+			if beneficiary != "0x0000000000000000000000000000000000000000":
+				Kb = Secret.query.filter_by(address=beneficiary).first()
+				secrets['beneficiary'] = { 'address': beneficiary, 'secret': str(Kb) if Kb else None }
 
-		if auth['enclave'] != "0x0000000000000000000000000000000000000000":
-			secrets[auth['enclave']] = KeyPair.query.filter_by(address=auth['enclave'], taskid=taskid).first() # Ke
+			if auth['enclave'] != "0x0000000000000000000000000000000000000000":
+				Ke = KeyPair.query.filter_by(address=auth['enclave'], taskid=taskid).first()
+				secrets['enclave'] = { 'address': auth['enclave'], 'secret': str(Ke) if Ke else None }
 
-		return {
-			'secrets': { key: str(value) if value else None for key, value in secrets.items() },
-			'params':  params,
-		}
+			return { 'secrets': secrets, 'params':  params }
 
-	def generatePalaemonConfFile(self, confInfo):
-		#insecure, better to hardcode it.
-		template = Template(open(confTemplatePath,"r").read())
-		return template.substitute(
-			MRENCLAVE              = confInfo['MREnclave'],
-			SESSION_ID             = confInfo['session_id'],
-			COMMAND                = confInfo['command'],
-			SCONE_FSPF_KEY        = confInfo['scone_volume_fspf_key'],
-			SCONE_FSPF_TAG        = confInfo['scone_volume_fspf_tag'],
-			DATA_FSPF_KEY          = confInfo['data_fspf_key'],
-			DATA_FSPF_TAG          = confInfo['data_fspf_tag'],
-			FSPF_KEY               = confInfo['fspf_key'],
-			FSPF_TAG               = confInfo['fspf_tag'],
-			IEXEC_ENCLAVE_FSPF_KEY = iexec_enclave_fspf_key,
-			IEXEC_ENCLAVE_FSPF_TAG = iexec_enclave_fspf_tag,
-			ENCLAVE_KEY			   = confInfo['enclave_challenge_key'],
-			TASK_ID				   = confInfo['task_id'],
-			WORKER_ADDRESS 		   = confInfo['worker_address']
-		)
-
-	def getConfInfo(self, task):
-
-		taskid		= task['taskid']
-		app         = task['app']
-		dataset     = task['dataset']
-		beneficiary = task['beneficiary']
-		dealid      = task['dealid']
-		params      = task['params']
-
+	def getConfInfo(self, taskid, dealid, app, dataset, beneficiary, params, worker):
 		#now gathering different info for building Palaemon conf
 		confInfo = dict()
 
 		#info for dApp (MREnclave for different heap size, fspf_tag, fspf_key)
-		appInfo = self.getAppInfo(app)
-		print("AppInfo:", appInfo)
-		confInfo.update(appInfo)
+		confInfo.update(self.getAppInfo(app))
 
 		#info for dataset (dataset_fspf_key, dataset_fspf_tag)
-		datasetInfo = self.getDatasetInfo(dataset)
-		print("Dataset info:", datasetInfo)
-		confInfo.update(datasetInfo)
+		confInfo.update(self.getDatasetInfo(dataset))
 
 		#info for output volume encryption (used by scone runtime)
-		beneficiaryKey = Secret.query.filter_by(address=beneficiary).first().secret;
-		sconeVolumeInfo = self.getSconeVolumeInfo(beneficiary, beneficiaryKey)
-		confInfo.update(sconeVolumeInfo)
+		beneficiaryKey = Secret.query.filter_by(address=beneficiary).first().secret
+		confInfo.update(self.getSconeVolumeInfo(beneficiary, beneficiaryKey))
 
-		confInfo['enclave_challenge_key'] 	= KeyPair.query.filter_by(taskid=taskid).first().private
-		confInfo['session_id']          	= str(uuid.uuid4())
-		confInfo['command']             	= params
-		confInfo['task_id']					= task['id']
-		confInfo['worker_address']			= self.w3.toChecksumAddress(task['worker_address'])
+		confInfo['enclave_challenge_key'] = KeyPair.query.filter_by(taskid=taskid).first().private
+		confInfo['session_id']            = str(uuid.uuid4())
+		confInfo['command']               = params
+		confInfo['task_id']               = taskid
+		confInfo['worker_address']        = self.w3.toChecksumAddress(worker)
 
 		return confInfo
 
 	def getAppInfo(self, dAppAddress):
 		dAppFingerprint = self.getContract(address=dAppAddress, abiname='App').functions.m_appMREnclave().call()
-		if dAppFingerprint is None: raise RevertError("Couldn't find dAppFingerprint")
+		if dAppFingerprint is None:
+			raise RevertError("Couldn't find dAppFingerprint")
 		[fspf_key, fspf_tag, MREnclave] = dAppFingerprint.decode("utf-8").split("|")[:3]
 
 		return {
@@ -390,8 +354,9 @@ class BlockchainInterface(object):
 		}
 
 	def getDatasetInfo(self, dataset):
-		secret = Secret.query.filter_by (address=dataset).first()
-		if secret is None: raise RevertError("Couldn't find dataset info")
+		secret = Secret.query.filter_by(address=dataset).first()
+		if secret is None:
+			raise RevertError("Couldn't find dataset info")
 		[data_fspf_key, data_fspf_tag] = secret.secret.split("|")[:2]
 
 		return {
@@ -404,14 +369,14 @@ class BlockchainInterface(object):
 	#not secure, we write everything on disk, need to do all this inside enclave.
 	def getSconeVolumeInfo(self, beneficiary, beneficiaryKey):
 		#shell script to launch docker scone-cli, to create fspf and encrypt it.
-		beneficiaryDirPath="./scone_volume_fspf/"+beneficiary
+		beneficiaryDirPath = "scone_volume_fspf/{}".format(beneficiary) # WARNING: RELATIVE PATH
 		try:
 			os.stat(beneficiaryDirPath)
 		except:
 			os.mkdir(beneficiaryDirPath)
 
 		#here we need to call scone libraries
-		fspfPath = "scone_volume_fspf/" + beneficiary + "/volume.fspf"
+		fspfPath = "scone_volume_fspf/{}/volume.fspf".format(beneficiary) # WARNING: RELATIVE PATH
 
 		(key, tag) = fspf.create_empty_volume_encr(fspfPath)
 
@@ -419,22 +384,40 @@ class BlockchainInterface(object):
 			fspfFile = file.read() #encrypted fspf (binary) should we encode in base64
 
 		return {
-			'scone_volume_fspf':            base64.b64encode(fspfFile).decode('ascii'),
-			'scone_volume_fspf_key':        key.hex(),
-			'scone_volume_fspf_tag':        tag.hex(),
-			'beneficiary_key':        beneficiaryKey
+			'scone_volume_fspf':     base64.b64encode(fspfFile).decode('ascii'),
+			'scone_volume_fspf_key': key.hex(),
+			'scone_volume_fspf_tag': tag.hex(),
+			'beneficiary_key':       beneficiaryKey
 		}
 
+	def generatePalaemonConfFile(self, confInfo):
+		#insecure, better to hardcode it.
+		template = Template(open(confTemplatePath,"r").read())
+		return template.substitute(
+			MRENCLAVE              = confInfo['MREnclave'],
+			SESSION_ID             = confInfo['session_id'],
+			COMMAND                = confInfo['command'],
+			SCONE_FSPF_KEY         = confInfo['scone_volume_fspf_key'],
+			SCONE_FSPF_TAG         = confInfo['scone_volume_fspf_tag'],
+			DATA_FSPF_KEY          = confInfo['data_fspf_key'],
+			DATA_FSPF_TAG          = confInfo['data_fspf_tag'],
+			FSPF_KEY               = confInfo['fspf_key'],
+			FSPF_TAG               = confInfo['fspf_tag'],
+			IEXEC_ENCLAVE_FSPF_KEY = iexec_enclave_fspf_key,
+			IEXEC_ENCLAVE_FSPF_TAG = iexec_enclave_fspf_tag,
+			ENCLAVE_KEY            = confInfo['enclave_challenge_key'],
+			TASK_ID                = confInfo['task_id'],
+			WORKER_ADDRESS         = confInfo['worker_address']
+		)
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--host',      type=str, default='0.0.0.0',               help='REST api host - default: 0.0.0.0'             )
-	parser.add_argument('--port',      type=int, default=5000,                    help='REST api port - default: 5000'                )
+	parser.add_argument('--host',      type=str, default='0.0.0.0',                                      help='REST api host - default: 0.0.0.0'             )
+	parser.add_argument('--port',      type=int, default=5000,                                           help='REST api port - default: 5000'                )
 	parser.add_argument('--gateway',   type=str, default='https://rpckovan1w7wagudqhtw5khzsdtv.iex.ec/', help='web3 gateway - default: http://localhost:8545')
-	parser.add_argument('--database',  type=str, default='sqlite:///sms/sms.db',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
-	parser.add_argument('--contracts', type=str, default='contracts',             help='iExec SC folder - default: ./contracts'       )
-	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
-	parser.add_argument('--test',      action="store_true")
+	parser.add_argument('--database',  type=str, default='sqlite:///sms/sms.db',                         help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
+	parser.add_argument('--contracts', type=str, default='contracts',                                    help='iExec SC folder - default: ./contracts'       )
+	parser.add_argument('--hub',       type=str, required=True,                                          help='iExecHub address'                             )
 	params = parser.parse_args()
 
 	# CREATE BLOCKCHAIN INTERFACE
@@ -444,11 +427,11 @@ if __name__ == '__main__':
 	app.config['SQLALCHEMY_DATABASE_URI'] = params.database
 
 	# SETUP ENDPOINTS
-	api.add_resource(SecretAPI,   '/secret/<string:address>',              endpoint='secret'  ) # address: account or ressource SC
-	api.add_resource(GenerateAPI, '/attestation/generate/<string:taskid>', endpoint='generate') # taskid
-	api.add_resource(VerifyAPI,   '/attestation/verify/<string:address>',  endpoint='verify'  ) # address: enclaveChallenge
-	api.add_resource(SecureAPI,   '/secure',                               endpoint='secure'  )
-	api.add_resource(SessionAPI,  '/securesession/generate',               endpoint='sessiongenerate'  )
+	api.add_resource(SecretAPI,   '/secret/<string:address>',              endpoint='secret'         ) # address: account or ressource SC
+	api.add_resource(GenerateAPI, '/attestation/generate/<string:taskid>', endpoint='generate'       ) # taskid
+	api.add_resource(VerifyAPI,   '/attestation/verify/<string:address>',  endpoint='verify'         ) # address: enclaveChallenge
+	api.add_resource(SecureAPI,   '/secure',                               endpoint='secure'         )
+	api.add_resource(SessionAPI,  '/securesession/generate',               endpoint='sessiongenerate')
 
 
 	# RUN DAEMON

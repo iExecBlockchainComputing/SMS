@@ -10,13 +10,12 @@ RUN pip install web3 flask flask_restful flask_sqlalchemy docker
 
 COPY libscone-cli.so /usr/lib/libscone-cli.so
 
-COPY scone_cli /usr/lib/python3.6/scone_cli
+COPY python/scone_cli /usr/lib/python3.6/scone_cli
 
 COPY launch.sh /launch.sh
 
-COPY sms /sms
+COPY python /python
 
-COPY palaemonConfTemplate.txt /palaemonConfTemplate.txt
 
 
 

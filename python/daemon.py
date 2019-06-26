@@ -414,6 +414,9 @@ if __name__ == '__main__':
 	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
 	params = parser.parse_args()
 
+
+	fspf.create_empty_volume_encr("/tmp.test.fspf")
+
 	# CREATE BLOCKCHAIN INTERFACE
 	blockchaininterface = BlockchainInterface(config=params)
 

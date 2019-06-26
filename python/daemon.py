@@ -3,21 +3,14 @@
 import web3
 
 import argparse
+import base64
 import json
 import hashlib
-import uuid
-import base64
-
+import os
 import requests
-import subprocess
-import docker
-import re
-import os, sys
-import random
 import string
+import uuid
 
-
-from string import Template
 from scone_cli            import fspf
 from web3                 import Web3, HTTPProvider
 from web3.contract        import Contract
@@ -26,13 +19,14 @@ from flask                import Flask, jsonify, make_response, request
 from flask_restful        import Api, Resource, reqparse
 from flask_sqlalchemy     import SQLAlchemy
 
-MAXSIZE                     = 4096
-SALT                        = "iexec_sms_secret:"
-confTemplatePath            = "./python/palaemonConfTemplate.txt" # WARNING: RELATIVE PATH
-certificats                 = ("./python/client.crt", "./python/client-key.key"), # WARNING: RELATIVE PATH
-casAddress                  = "cas:8081"
-iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
-iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
+MAXSIZE                = 4096
+SALT                   = "iexec_sms_secret:"
+confTemplatePath       = "./python/palaemonConfTemplate.txt" # WARNING: RELATIVE PATH
+certificats            = ("./python/client.crt", "./python/client-key.key"), # WARNING: RELATIVE PATH
+casAddress             = "cas:8081"
+iexec_enclave_fspf_tag = "1d7b6434975be521a07ae686f8145d59"
+iexec_enclave_fspf_key = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
+
 # +---------------------------------------------------------------------------+
 # |                           ENVIRONMENT VARIABLES                           |
 # +---------------------------------------------------------------------------+
@@ -392,7 +386,7 @@ class BlockchainInterface(object):
 
 	def generatePalaemonConfFile(self, confInfo):
 		#insecure, better to hardcode it.
-		template = Template(open(confTemplatePath,"r").read())
+		template = string.Template(open(confTemplatePath,"r").read())
 		return template.substitute(
 			MRENCLAVE              = confInfo['MREnclave'],
 			SESSION_ID             = confInfo['session_id'],
@@ -412,12 +406,12 @@ class BlockchainInterface(object):
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--host',      type=str, default='0.0.0.0',                                      help='REST api host - default: 0.0.0.0'             )
-	parser.add_argument('--port',      type=int, default=5000,                                           help='REST api port - default: 5000'                )
-	parser.add_argument('--gateway',   type=str, default='https://rpckovan1w7wagudqhtw5khzsdtv.iex.ec/', help='web3 gateway - default: http://localhost:8545')
-	parser.add_argument('--database',  type=str, default='sqlite:///sms/sms.db',                         help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
-	parser.add_argument('--contracts', type=str, default='contracts',                                    help='iExec SC folder - default: ./contracts'       )
-	parser.add_argument('--hub',       type=str, required=True,                                          help='iExecHub address'                             )
+	parser.add_argument('--host',      type=str, default='0.0.0.0',               help='REST api host - default: 0.0.0.0'             )
+	parser.add_argument('--port',      type=int, default=5000,                    help='REST api port - default: 5000'                )
+	parser.add_argument('--gateway',   type=str, default='http://localhost:8545', help='web3 gateway - default: http://localhost:8545') # https://rpckovan1w7wagudqhtw5khzsdtv.iex.ec/
+	parser.add_argument('--database',  type=str, default='sqlite:///:memory:',    help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
+	parser.add_argument('--contracts', type=str, default='contracts',             help='iExec SC folder - default: ./contracts'       )
+	parser.add_argument('--hub',       type=str, required=True,                   help='iExecHub address'                             )
 	params = parser.parse_args()
 
 	# CREATE BLOCKCHAIN INTERFACE

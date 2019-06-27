@@ -290,7 +290,7 @@ class BlockchainInterface(object):
 			)
 
 			requests.post(
-				'https://{}/session'.format(casAddress),
+				'https://{}/session'.format(config.casAddress),
 				data   = self.generatePalaemonConfFile(confInfo),
 				cert   = certificats,
 				verify = False
@@ -418,6 +418,7 @@ if __name__ == '__main__':
 	parser.add_argument('--database',  type=str, default='sqlite:///sms/sms.db',                         help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
 	parser.add_argument('--contracts', type=str, default='contracts',                                    help='iExec SC folder - default: ./contracts'       )
 	parser.add_argument('--hub',       type=str, required=True,                                          help='iExecHub address'                             )
+	parser.add_argument('--casAddress',type=str, required=True,                                          help='iExecHub address'                             )
 	params = parser.parse_args()
 
 	# CREATE BLOCKCHAIN INTERFACE

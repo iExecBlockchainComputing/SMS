@@ -1,3 +1,9 @@
 FROM sms_scone
 
 COPY conf/fspf.pb fspf.pb
+
+COPY launch.sh /launch.sh
+
+RUN chmod +x /launch.sh
+
+ENTRYPOINT /bin/sh /launch.sh

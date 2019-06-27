@@ -29,7 +29,6 @@ MAXSIZE                     = 4096
 SALT                        = "iexec_sms_secret:"
 confTemplatePath            = "./python/palaemonConfTemplate.txt" # WARNING: RELATIVE PATH
 certificats                 = ("./python/client.crt", "./python/client-key.key"), # WARNING: RELATIVE PATH
-casAddress                  = "cas:8081"
 iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
 iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
 # +---------------------------------------------------------------------------+
@@ -183,6 +182,7 @@ class SessionAPI(Resource):
 class BlockchainInterface(object):
 	def __init__(self, config):
 		super(BlockchainInterface, self).__init__()
+		self.config = config
 		self.w3 = Web3(HTTPProvider(config.gateway))
 		self.ABIs = {                                                                    \
 			'Ownable':    json.load(open(f'{config.contracts}/Ownable.json'   ))['abi'], \
@@ -289,7 +289,7 @@ class BlockchainInterface(object):
 			)
 
 			requests.post(
-				'https://{}/session'.format(config.casAddress),
+				'https://{}/session'.format(self.config.casAddress),
 				data   = self.generatePalaemonConfFile(confInfo),
 				cert   = certificats,
 				verify = False
@@ -414,10 +414,10 @@ if __name__ == '__main__':
 	parser.add_argument('--host',      type=str, default='0.0.0.0',                                      help='REST api host - default: 0.0.0.0'             )
 	parser.add_argument('--port',      type=int, default=5000,                                           help='REST api port - default: 5000'                )
 	parser.add_argument('--gateway',   type=str, default='https://rpckovan1w7wagudqhtw5khzsdtv.iex.ec/', help='web3 gateway - default: http://localhost:8545')
-	parser.add_argument('--database',  type=str, default='sqlite:///sms/sms.db',                         help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
+	parser.add_argument('--database',  type=str, default='sqlite:///:memory:',                         	 help='SMS database - default: sqlite:///:memory:'   ) # for persistency use 'sqlite:////tmp/sms.db'
 	parser.add_argument('--contracts', type=str, default='contracts',                                    help='iExec SC folder - default: ./contracts'       )
 	parser.add_argument('--hub',       type=str, required=True,                                          help='iExecHub address'                             )
-	parser.add_argument('--casAddress',type=str, required=True,                                          help='iExecHub address'                             )
+	parser.add_argument('--casAddress',type=str, required=True,                                          help='CAS address'                             	 )
 	params = parser.parse_args()
 
 	# CREATE BLOCKCHAIN INTERFACE

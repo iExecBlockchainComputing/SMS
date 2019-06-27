@@ -1,4 +1,4 @@
-FROM sconecuratedimages/iexec:python-3.6.6-alpine3.6
+FROM nexus.iex.ec/python_scone
 
 RUN apk update && apk add gcc musl-dev
 RUN cp /usr/bin/python3.6 /usr/bin/python3
@@ -13,7 +13,7 @@ COPY node_modules /node_modules
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 
 RUN chmod +x /docker-entrypoint.sh
-ENTRYPOINT /docker-entrypoint.sh
+ENTRYPOINT /bin/sh /docker-entrypoint.sh
 
 # docker image build -t nexus.iex.ec/sms:<tag> .
 
@@ -22,5 +22,5 @@ ENTRYPOINT /docker-entrypoint.sh
 #     -e CAS=localhost:18765 \
 #     -e HUB=0x60E25C038D70A15364DAc11A042DB1dD7A2cccBC \
 #     -p 5000:5000 \
-#     - /dev/isgx:/dev/isgx \
+#     --device=/dev/isgx:/dev/isgx \
 #     nexus.iex.ec/sms:<tag>

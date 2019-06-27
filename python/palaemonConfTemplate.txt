@@ -40,14 +40,14 @@ images:
      volumes:
         - name: data
           path: /data
-        - name: output
-          path: /output
+        - name: scone
+          path: /scone
 
 volumes:
    - name: data
      fspf_tag: $DATA_FSPF_TAG
      fspf_key: $DATA_FSPF_KEY
-   - name: output
-     fspf_tag: $OUTPUT_FSPF_TAG
-     fspf_key: $OUTPUT_FSPF_KEY
+   - name: scone
+     fspf_tag: $SCONE_FSPF_TAG
+     fspf_key: $SCONE_FSPF_KEY
 

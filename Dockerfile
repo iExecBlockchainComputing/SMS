@@ -1,12 +1,26 @@
-FROM python:3.7.2
+FROM sconecuratedimages/iexec:python-3.6.6-alpine3.6
 
-RUN pip3 install web3 eth_account flask flask_restful flask_sqlalchemy
+RUN apk update && apk add gcc musl-dev
+RUN cp /usr/bin/python3.6 /usr/bin/python3
+RUN pip install web3 flask flask_restful flask_sqlalchemy
 
-RUN mkdir /sms
-COPY . /sms
-WORKDIR /sms
+COPY libscone-cli.so /usr/lib/libscone-cli.so
+COPY python/scone_cli /usr/lib/python3.6/scone_cli
+RUN mkdir scone_volume_fspf
 
-ENTRYPOINT ["./docker-launch.sh"]
+COPY python /python
+COPY node_modules /node_modules
+COPY docker-entrypoint.sh /docker-entrypoint.sh
 
-# docker image build -t iexechub/sms .
-# docker run -it -e HUB=0x60E25C038D70A15364DAc11A042DB1dD7A2cccBC -e GATEWAY=http://127.0.0.1:8545 -p 5000:5000 --name sms iexechub/sms:latest
+RUN chmod +x /docker-entrypoint.sh
+ENTRYPOINT /docker-entrypoint.sh
+
+# docker image build -t nexus.iex.ec/sms:<tag> .
+
+# docker run -it --name sms \
+#     -e GATEWAY=http://localhost:8545 \
+#     -e CAS=localhost:18765 \
+#     -e HUB=0x60E25C038D70A15364DAc11A042DB1dD7A2cccBC \
+#     -p 5000:5000 \
+#     - /dev/isgx:/dev/isgx \
+#     nexus.iex.ec/sms:<tag>

@@ -1,12 +1,14 @@
 version: '3.4'
 
 services:
-  worker1:
-    image: iexechub/sms:latest
+  sms:
+    image: iexechub/sms:<tag>
     container_name: sms
     environment:
-      - CLERK=0xDf62b3FddA0B2C9bc282f058eB80A270d80D25f2
       - HUB=0x60E25C038D70A15364DAc11A042DB1dD7A2cccBC
       - GATEWAY=http://127.0.0.1:8545
+      - CAS_ADDRESS=<address>
     ports:
       - 5000:5000
+    devices:
+      - /dev/isgx:/dev/isgx

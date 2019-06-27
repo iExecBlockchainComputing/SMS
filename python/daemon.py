@@ -10,7 +10,6 @@ import base64
 
 import requests
 import subprocess
-import docker
 import re
 import os, sys
 import random

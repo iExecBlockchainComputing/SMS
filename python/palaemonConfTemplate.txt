@@ -7,7 +7,7 @@ services:
      mrenclaves: [$MRENCLAVE]
      tags: [demo]
      pwd: /
-     command: python /app/test.py
+     command: $COMMAND
      fspf_path: /fspf.pb
      fspf_key: $FSPF_KEY
      fspf_tag: $FSPF_TAG

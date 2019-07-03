@@ -288,13 +288,9 @@ class BlockchainInterface(object):
 				worker      = auth['worker']
 			)
 
-			conf = self.generatePalaemonConfFile(confInfo)
-			print("==> conf")
-			print(conf)
-
 			requests.post(
 				'https://{}/session'.format(self.config.casAddress),
-				data   = conf,
+				data   = self.generatePalaemonConfFile(confInfo),
 				cert   = certificats,
 				verify = False
 			)

@@ -28,7 +28,7 @@ from flask_sqlalchemy     import SQLAlchemy
 MAXSIZE                     = 4096
 SALT                        = "iexec_sms_secret:"
 confTemplatePath            = "./python/palaemonConfTemplate.txt" # WARNING: RELATIVE PATH
-certificats                 = ("./python/client.crt", "./python/client-key.key"), # WARNING: RELATIVE PATH
+certificats                 = ("./python/client.crt", "./python/client-key.key") # WARNING: RELATIVE PATH
 iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
 iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
 # +---------------------------------------------------------------------------+
@@ -288,9 +288,13 @@ class BlockchainInterface(object):
 				worker      = auth['worker']
 			)
 
+			conf = self.generatePalaemonConfFile(confInfo)
+			print("==> conf")
+			print(conf)
+
 			requests.post(
 				'https://{}/session'.format(self.config.casAddress),
-				data   = self.generatePalaemonConfFile(confInfo),
+				data   = conf,
 				cert   = certificats,
 				verify = False
 			)

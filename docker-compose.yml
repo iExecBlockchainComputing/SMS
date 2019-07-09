@@ -2,12 +2,13 @@ version: '3.4'
 
 services:
   sms:
-    image: iexechub/sms:<tag>
+    image: nexus.iex.ec/sms:new
     container_name: sms
     environment:
       - HUB=0x60E25C038D70A15364DAc11A042DB1dD7A2cccBC
       - GATEWAY=http://127.0.0.1:8545
-      - CAS_ADDRESS=<address>:8081
+      - CAS=http://127.0.0.1:8081
+      - DATABASE=sqlite:///sms.db
     ports:
       - 5000:5000
     devices:

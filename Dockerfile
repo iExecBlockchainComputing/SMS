@@ -1,4 +1,4 @@
-FROM nexus.iex.ec/python_scone
+FROM iexechub/python-scone
 
 RUN apk update && apk add gcc musl-dev
 RUN cp /usr/bin/python3.6 /usr/bin/python3
@@ -24,3 +24,4 @@ ENTRYPOINT /bin/sh /docker-entrypoint.sh
 #     -p 5000:5000 \
 #     --device=/dev/isgx:/dev/isgx \
 #     nexus.iex.ec/sms:<tag>
+

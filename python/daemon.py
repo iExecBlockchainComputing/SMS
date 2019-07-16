@@ -27,7 +27,8 @@ from flask_sqlalchemy     import SQLAlchemy
 
 MAXSIZE                     = 4096
 SALT                        = "iexec_sms_secret:"
-confTemplatePath            = "./python/palaemonConfTemplate.txt" # WARNING: RELATIVE PATH
+confTemplatePathWithData    = "./python/palaemonConfTemplate.txt" # WARNING: RELATIVE PATH
+confTemplatePathNoData		= "./python/palaemonConfTemplateNoData.txt"
 certificats                 = ("./python/client.crt", "./python/client-key.key") # WARNING: RELATIVE PATH
 iexec_enclave_fspf_tag      = "1d7b6434975be521a07ae686f8145d59"
 iexec_enclave_fspf_key      = "d0e0f60f67ceb28c0010c5b2effbf5865ec538e8d9f9e95bac1ea30bf44dc50b"
@@ -287,7 +288,7 @@ class BlockchainInterface(object):
 				params      = params,
 				worker      = auth['worker']
 			)
-
+			
 			requests.post(
 				'https://{}/session'.format(self.config.casAddress),
 				data   = self.generatePalaemonConfFile(confInfo),
@@ -329,8 +330,14 @@ class BlockchainInterface(object):
 		confInfo.update(self.getDatasetInfo(dataset))
 
 		#info for output volume encryption (used by scone runtime)
-		beneficiaryKey = Secret.query.filter_by(address=beneficiary).first().secret
-		confInfo.update(self.getSconeVolumeInfo(beneficiary, beneficiaryKey))
+		confInfo.update(self.getSconeVolumeInfo())
+
+		if beneficiary != "0x0000000000000000000000000000000000000000":
+			beneficiaryKey = Secret.query.filter_by(address=beneficiary).first()
+		else:
+			beneficiaryKey = ""
+		confInfo['beneficiary_key']		  = beneficiaryKey
+
 
 		confInfo['enclave_challenge_key'] = KeyPair.query.filter_by(taskid=taskid).first().private
 		confInfo['session_id']            = str(uuid.uuid4())
@@ -353,44 +360,57 @@ class BlockchainInterface(object):
 		}
 
 	def getDatasetInfo(self, dataset):
-		secret = Secret.query.filter_by(address=dataset).first()
-		if secret is None:
-			raise RevertError("Couldn't find dataset info")
-		[data_fspf_key, data_fspf_tag] = secret.secret.split("|")[:2]
+		if dataset == "0x0000000000000000000000000000000000000000":
+			[data_fspf_key, data_fspf_tag] = ['','']
+			no_data = True
+		else:
+			secret = Secret.query.filter_by(address=dataset).first()
+			if secret is None:
+				raise RevertError("Couldn't find dataset info")
+			[data_fspf_key, data_fspf_tag] = secret.secret.split("|")[:2]
+			no_data = False
 
 		return {
 			'data_fspf_key': data_fspf_key,
 			'data_fspf_tag': data_fspf_tag,
-			'address':       dataset
+			'address':       dataset,
+			'no_data': 		 no_data
 		}
 
 	#return dict containing output_fspf (as a string), output_fspf_tag, output_fspf_key, and  output_fspf_key encrypted with beneficiary key.
 	#not secure, we write everything on disk, need to do all this inside enclave.
-	def getSconeVolumeInfo(self, beneficiary, beneficiaryKey):
+	def getSconeVolumeInfo(self):
 		#shell script to launch docker scone-cli, to create fspf and encrypt it.
-		beneficiaryDirPath = "scone_volume_fspf/{}".format(beneficiary) # WARNING: RELATIVE PATH
+		uid = str(uuid.uuid4())
+		sconeVolumePath = "scone_volume_fspf/{}".format(uid) # WARNING: RELATIVE PATH
 		try:
-			os.stat(beneficiaryDirPath)
+			os.stat(sconeVolumePath)
 		except:
-			os.mkdir(beneficiaryDirPath)
-
+			os.mkdir(sconeVolumePath)
 		#here we need to call scone libraries
-		fspfPath = "scone_volume_fspf/{}/volume.fspf".format(beneficiary) # WARNING: RELATIVE PATH
+		fspfPath = "scone_volume_fspf/{}/volume.fspf".format(uid) # WARNING: RELATIVE PATH
 
 		(key, tag) = fspf.create_empty_volume_encr(fspfPath)
 
 		with open(fspfPath, "rb") as file:
-			fspfFile = file.read() #encrypted fspf (binary) should we encode in base64
+			fspfFile = file.read()
+
+		os.remove(fspfPath)
+		os.rmdir(sconeVolumePath)
 
 		return {
 			'scone_volume_fspf':     base64.b64encode(fspfFile).decode('ascii'),
 			'scone_volume_fspf_key': key.hex(),
 			'scone_volume_fspf_tag': tag.hex(),
-			'beneficiary_key':       beneficiaryKey
 		}
 
 	def generatePalaemonConfFile(self, confInfo):
 		#insecure, better to hardcode it.
+		if confInfo['no_data'] is True:
+			confTemplatePath = confTemplatePathNoData
+		else:
+			confTemplatePath = confTemplatePathWithData
+
 		template = Template(open(confTemplatePath,"r").read())
 		return template.substitute(
 			MRENCLAVE              = confInfo['MREnclave'],

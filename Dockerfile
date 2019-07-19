@@ -6,7 +6,7 @@ RUN pip install web3 flask flask_restful flask_sqlalchemy
 
 COPY libscone-cli.so /usr/lib/libscone-cli.so
 COPY python/scone_cli /usr/lib/python3.6/scone_cli
-RUN mkdir scone_volume_fspf
+RUN mkdir scone_volume_fspf /sms
 
 COPY python /python
 COPY node_modules /node_modules
@@ -24,4 +24,3 @@ ENTRYPOINT /bin/sh /docker-entrypoint.sh
 #     -p 5000:5000 \
 #     --device=/dev/isgx:/dev/isgx \
 #     nexus.iex.ec/sms:<tag>
-

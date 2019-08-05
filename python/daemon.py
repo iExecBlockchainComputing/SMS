@@ -337,9 +337,8 @@ class BlockchainInterface(object):
 			beneficiaryKey = beneficiaryKeyRow.secret if beneficiaryKeyRow else ""
 		else:
 			beneficiaryKey = ""
+
 		confInfo['beneficiary_key']		  = beneficiaryKey
-
-
 		confInfo['enclave_challenge_key'] = KeyPair.query.filter_by(taskid=taskid).first().private
 		confInfo['session_id']            = str(uuid.uuid4())
 		confInfo['command']               = params

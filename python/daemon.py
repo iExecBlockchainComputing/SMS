@@ -288,7 +288,7 @@ class BlockchainInterface(object):
 				params      = params,
 				worker      = auth['worker']
 			)
-			
+
 			requests.post(
 				'https://{}/session'.format(self.config.casAddress),
 				data   = self.generatePalaemonConfFile(confInfo),
@@ -333,7 +333,8 @@ class BlockchainInterface(object):
 		confInfo.update(self.getSconeVolumeInfo())
 
 		if beneficiary != "0x0000000000000000000000000000000000000000":
-			beneficiaryKey = Secret.query.filter_by(address=beneficiary).first()
+			beneficiaryKeyRow = Secret.query.filter_by(address=beneficiary).first()
+			beneficiaryKey = beneficiaryKeyRow.secret if beneficiaryKeyRow else ""
 		else:
 			beneficiaryKey = ""
 		confInfo['beneficiary_key']		  = beneficiaryKey
